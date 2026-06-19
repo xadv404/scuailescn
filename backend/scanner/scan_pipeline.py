@@ -125,21 +125,60 @@ async def run_full_pipeline(
 
     _cb("Initialisation du pipeline…", 3)
 
-    # ── Recon passif + SQLMap en parallèle ────────────────────────
-    _cb("Recon passif & SQLMap en parallèle…", 5)
+    # ══ PHASES 1+2 — Recon passif + SQLi detect EN PARALLÈLE ════
+    # Les deux tournent en même temps pour gagner du temps.
+    _cb("Scan vulnérabilités & injection SQL en parallèle…", 5)
 
     passive_task = asyncio.create_task(
         run_passive_phases(url, cfg, progress_callback=None, timeout_per_phase=90)
     )
-    sqlmap_task = asyncio.create_task(
-        sqlmap_runner.run_scan(url, scan_id, config=cfg)
+    detect_task = asyncio.create_task(
+        sqlmap_runner.detect_injections(url, scan_id, config=cfg)
     ) if sqlmap_runner else None
 
     passive_result = await passive_task
-    sqlmap_result  = (await sqlmap_task) if sqlmap_task else {}
+    det_result     = (await detect_task) if detect_task else {}
+
+    sqli_confirmed  = det_result.get("sqli_confirmed", False)
+    stdout_combined = det_result.get("stdout", "")
+    sqlmap_out_dir  = det_result.get("output_dir", "")
+    csv_from_sqlmap: List[str] = []
+
+    _cb(
+        "Injection SQL confirmée — lancement énumération…" if sqli_confirmed
+        else "Analyse des résultats…",
+        55,
+    )
+
+    # ══ PHASE 3 — Énumération BDs/tables (si injection) ══════════
+    if sqli_confirmed and sqlmap_runner:
+        _cb("Énumération des bases de données…", 57)
+        enum = await sqlmap_runner.enumerate_db(url, scan_id, config=cfg)
+        stdout_combined += "\n" + enum.get("stdout", "")
+        _cb("Énumération terminée", 68)
+
+        # ══ PHASE 4 — Dump (si activé) ════════════════════════════
+        from config import ALLOW_EXTRACTION_MODE
+        if ALLOW_EXTRACTION_MODE:
+            _cb("Extraction des données (dump)…", 70)
+            dump = await sqlmap_runner.dump_data(url, scan_id, config=cfg)
+            stdout_combined += "\n" + dump.get("stdout", "")
+            csv_from_sqlmap  = dump.get("csv_files", [])
+            _cb("Dump terminé", 82)
+        else:
+            _cb("Extraction désactivée", 82)
+
+    sqlmap_result = {
+        "success":        bool(sqlmap_runner and det_result.get("success")),
+        "sqli_confirmed": sqli_confirmed,
+        "stdout":         stdout_combined,
+        "stderr":         "",
+        "output_dir":     sqlmap_out_dir,
+        "csv_files":      csv_from_sqlmap,
+    }
 
     # ── Fusion des findings ────────────────────────────────────────
-    _cb("Analyse et fusion des résultats…", 60)
+    _cb("Analyse et fusion des résultats…", 83)
 
     all_findings: List[Dict[str, Any]] = list(passive_result.get("findings", []))
 
@@ -188,7 +227,7 @@ async def run_full_pipeline(
     sqli_confirmed  = sqlmap_result.get("sqli_confirmed", False)
 
     # ── CSV ────────────────────────────────────────────────────────
-    _cb("Export CSV…", 75)
+    _cb("Export CSV…", 85)
     csv_files: List[str] = []
 
     # CSV des findings de vulnérabilités
@@ -215,7 +254,7 @@ async def run_full_pipeline(
     if sc:
         csv_files.append(sc)
 
-    _cb("Pipeline terminé", 85)
+    _cb("Pipeline terminé", 92)
 
     return {
         "findings":        all_findings,

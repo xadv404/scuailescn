@@ -75,10 +75,10 @@ const _stepMap = {
   'csv':     '#pstep-csv',
 };
 const _pct_to_step = pct => {
-  if (pct < 20) return 'recon';
-  if (pct < 45) return 'detect';
-  if (pct < 65) return 'analyze';
-  if (pct < 80) return 'extract';
+  if (pct < 55) return 'recon';   // recon passif + SQLi detect (parallèle)
+  if (pct < 57) return 'detect';
+  if (pct < 70) return 'analyze'; // enum DB
+  if (pct < 83) return 'extract'; // dump
   return 'csv';
 };
 function animatePipeline(pct, completed = false, failed = false) {
