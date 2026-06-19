@@ -368,6 +368,10 @@ async function loadReports() {
           <td class="actions-cell">
             <button class="btn btn--ghost btn--sm" onclick="openReport('${escHtml(r.scan_id)}')">Rapport</button>
             <button class="btn btn--ghost btn--sm" onclick="openCsvModal('${escHtml(r.scan_id)}')">CSV</button>
+            <button class="btn btn--viewer btn--sm" onclick="openViewer('${escHtml(r.scan_id)}')">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>
+              Données
+            </button>
             <button class="btn btn--danger btn--sm" onclick="removeScan('${escHtml(r.scan_id)}')">×</button>
           </td>
         </tr>`).join('')}
@@ -376,6 +380,222 @@ async function loadReports() {
   } catch (err) {
     c.innerHTML = `<p class="empty-state">Erreur : ${escHtml(err.message)}</p>`;
   }
+}
+
+/* ── Results Viewer ─────────────────────────────────────────── */
+const _viewer = {
+  scanId:       null,
+  filename:     null,
+  tableName:    null,
+  page:         1,
+  perPage:      50,
+  search:       '',
+  sortCol:      '',
+  sortDir:      'asc',
+  debounce:     null,
+};
+
+async function openViewer(scan_id) {
+  _viewer.scanId    = scan_id;
+  _viewer.filename  = null;
+  _viewer.tableName = null;
+  _viewer.page      = 1;
+  _viewer.search    = '';
+  _viewer.sortCol   = '';
+  _viewer.sortDir   = 'asc';
+
+  const section = $('#section-viewer');
+  section.style.display = '';
+  $('#viewer-scan-id').textContent = `#${scan_id}`;
+  $('#viewer-main').innerHTML = '<p class="viewer-empty">Sélectionner une table dans la liste à gauche.</p>';
+  section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  await loadViewerTables(scan_id);
+}
+window.openViewer = openViewer;
+
+async function loadViewerTables(scan_id) {
+  const sidebar = $('#viewer-sidebar');
+  sidebar.innerHTML = '<p class="viewer-empty">Chargement…</p>';
+  try {
+    const data = await apiFetch(`/api/scan/${encodeURIComponent(scan_id)}/tables`);
+    const dbs  = (data.databases || []).filter(d => d.tables.length > 0);
+
+    if (!dbs.length) {
+      sidebar.innerHTML = '<p class="viewer-empty">Aucune table extraite.<br><span style="font-size:10px;color:var(--text-muted)">SQLi requis pour l\'extraction.</span></p>';
+      return;
+    }
+
+    let html = '<div class="viewer-db-list">';
+    for (const db of dbs) {
+      html += `
+      <div class="viewer-db-item">
+        <div class="viewer-db-name">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="12">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/>
+            <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/>
+            <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/>
+          </svg>
+          ${escHtml(db.name)}
+        </div>
+        <div class="viewer-table-list">`;
+      for (const t of db.tables) {
+        html += `
+          <div class="viewer-table-item"
+               data-filename="${escHtml(t.filename)}"
+               onclick="openTable(${JSON.stringify(scan_id)},${JSON.stringify(t.filename)},${JSON.stringify(t.table)})">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="11">
+              <rect x="3" y="3" width="18" height="18" rx="2"/>
+              <path d="M3 9h18M3 15h18M9 3v18"/>
+            </svg>
+            <span class="viewer-table-name">${escHtml(t.table)}</span>
+            <span class="viewer-row-count">${t.row_count}</span>
+          </div>`;
+      }
+      html += '</div></div>';
+    }
+    html += '</div>';
+    sidebar.innerHTML = html;
+  } catch (err) {
+    sidebar.innerHTML = `<p class="viewer-empty">Erreur : ${escHtml(err.message)}</p>`;
+  }
+}
+
+async function openTable(scan_id, filename, table_name) {
+  _viewer.filename  = filename;
+  _viewer.tableName = table_name;
+  _viewer.page      = 1;
+  _viewer.search    = '';
+  _viewer.sortCol   = '';
+  _viewer.sortDir   = 'asc';
+
+  $$('.viewer-table-item').forEach(el => el.classList.remove('viewer-table-item--active'));
+  $(`.viewer-table-item[data-filename="${CSS.escape(filename)}"]`)?.classList.add('viewer-table-item--active');
+
+  await loadTablePage();
+}
+window.openTable = openTable;
+
+async function loadTablePage() {
+  if (!_viewer.scanId || !_viewer.filename) return;
+  const main = $('#viewer-main');
+
+  const params = new URLSearchParams({ page: _viewer.page, per_page: _viewer.perPage });
+  if (_viewer.search)  params.set('search',   _viewer.search);
+  if (_viewer.sortCol) { params.set('sort_col', _viewer.sortCol); params.set('sort_dir', _viewer.sortDir); }
+
+  try {
+    const data = await apiFetch(
+      `/api/scan/${encodeURIComponent(_viewer.scanId)}/table/${encodeURIComponent(_viewer.filename)}?${params}`
+    );
+    main.innerHTML = renderViewerTable(data);
+
+    const inp = $('#viewer-search');
+    if (inp) {
+      inp.value = _viewer.search;
+      inp.focus();
+      inp.addEventListener('input', () => {
+        clearTimeout(_viewer.debounce);
+        _viewer.debounce = setTimeout(() => {
+          _viewer.search = inp.value.trim();
+          _viewer.page   = 1;
+          loadTablePage();
+        }, 300);
+      });
+    }
+
+    $$('.viewer-th-sort', main).forEach(th => {
+      th.addEventListener('click', () => {
+        const col = th.dataset.col;
+        if (_viewer.sortCol === col) {
+          _viewer.sortDir = _viewer.sortDir === 'asc' ? 'desc' : 'asc';
+        } else {
+          _viewer.sortCol = col;
+          _viewer.sortDir = 'asc';
+        }
+        _viewer.page = 1;
+        loadTablePage();
+      });
+    });
+
+    $$('.viewer-page-btn', main).forEach(btn => {
+      btn.addEventListener('click', () => {
+        const p = parseInt(btn.dataset.page, 10);
+        if (!isNaN(p)) { _viewer.page = p; loadTablePage(); }
+      });
+    });
+  } catch (err) {
+    main.innerHTML = `<p class="viewer-empty">Erreur : ${escHtml(err.message)}</p>`;
+  }
+}
+
+function renderViewerTable(data) {
+  const { columns, rows, total, page, per_page, total_pages, capped_at, search } = data;
+  if (!columns.length) return '<p class="viewer-empty">Table vide.</p>';
+
+  const capNote = total >= capped_at
+    ? `<span class="viewer-cap-note">⚠ limité aux ${capped_at} premières lignes</span>`
+    : '';
+
+  const startRow = (page - 1) * per_page + 1;
+  const endRow   = Math.min(page * per_page, total);
+
+  // Pagination range
+  const range = [];
+  const lo = Math.max(1, page - 2), hi = Math.min(total_pages, page + 2);
+  if (lo > 1)             { range.push(1); if (lo > 2) range.push('…'); }
+  for (let i = lo; i <= hi; i++) range.push(i);
+  if (hi < total_pages)   { if (hi < total_pages - 1) range.push('…'); range.push(total_pages); }
+
+  return `
+  <div class="viewer-toolbar">
+    <div class="viewer-breadcrumb">
+      <span class="viewer-bc-table">${escHtml(_viewer.tableName || data.filename)}</span>
+    </div>
+    <div class="viewer-toolbar-right">
+      <span class="viewer-info">${total ? `${startRow}–${endRow} / ${total} ligne${total>1?'s':''}` : '0 ligne'} ${search ? `· "${escHtml(search)}"` : ''} ${capNote}</span>
+      <label class="viewer-search-wrap">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="13"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input id="viewer-search" class="viewer-search" type="text" placeholder="Rechercher…" autocomplete="off" />
+      </label>
+    </div>
+  </div>
+
+  <div class="viewer-table-wrap">
+    <table class="data-table">
+      <thead><tr>
+        ${columns.map(col => {
+          const active = _viewer.sortCol === col;
+          const dir    = active ? _viewer.sortDir : '';
+          return `<th class="viewer-th-sort${active ? ' sort--'+dir : ''}" data-col="${escHtml(col)}">
+            ${escHtml(col)}<span class="sort-icon">${active ? (dir==='asc'?'↑':'↓') : '↕'}</span>
+          </th>`;
+        }).join('')}
+      </tr></thead>
+      <tbody>
+        ${rows.length
+          ? rows.map(row => `<tr>${columns.map(col => {
+              const v = String(row[col] ?? '');
+              return `<td title="${escHtml(v)}">${escHtml(truncate(v, 80))}</td>`;
+            }).join('')}</tr>`).join('')
+          : `<tr><td colspan="${columns.length}" class="viewer-empty">Aucun résultat.</td></tr>`}
+      </tbody>
+    </table>
+  </div>
+
+  ${total_pages > 1 ? `
+  <div class="viewer-pagination">
+    <button class="viewer-page-btn" data-page="${page-1}" ${page<=1?'disabled':''}>‹</button>
+    <div class="viewer-page-nums">
+      ${range.map(p => p === '…'
+        ? `<span class="viewer-page-ellipsis">…</span>`
+        : `<button class="viewer-page-btn${p===page?' viewer-page-btn--active':''}" data-page="${p}">${p}</button>`
+      ).join('')}
+    </div>
+    <button class="viewer-page-btn" data-page="${page+1}" ${page>=total_pages?'disabled':''}>›</button>
+    <span class="viewer-page-info">${page} / ${total_pages}</span>
+  </div>` : ''}`
+  ;
 }
 
 /* ── CSV modal ──────────────────────────────────────────────── */
@@ -620,6 +840,11 @@ document.addEventListener('DOMContentLoaded', () => {
       $('#modal-overlay').style.display = 'none';
       _currentReport = null;
     }
+  });
+
+  $('#btn-close-viewer').addEventListener('click', () => {
+    $('#section-viewer').style.display = 'none';
+    _viewer.scanId = null;
   });
 
   initDropZone();

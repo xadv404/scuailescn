@@ -279,6 +279,104 @@ async def download_csv(scan_id: str, filename: str):
     )
 
 
+@app.get("/api/scan/{scan_id}/tables")
+async def list_tables(scan_id: str):
+    """Liste les bases et tables extraites par SQLMap (CSV format db__table.csv)."""
+    import csv as _csv
+    dir_path = REPORTS_CSV_DIR / scan_id
+    if not dir_path.exists():
+        return {"scan_id": scan_id, "databases": []}
+
+    dbs: Dict[str, List[Dict]] = {}
+    for f in sorted(dir_path.glob("*.csv")):
+        name = f.stem
+        if "__" not in name:
+            continue
+        db_name, table_name = name.split("__", 1)
+        row_count = 0
+        with open(f, newline="", encoding="utf-8", errors="replace") as fh:
+            for _ in fh:
+                row_count += 1
+        dbs.setdefault(db_name, []).append({
+            "table":    table_name,
+            "filename": f.name,
+            "row_count": max(0, row_count - 1),
+        })
+
+    return {
+        "scan_id":   scan_id,
+        "databases": [{"name": db, "tables": tables} for db, tables in sorted(dbs.items())],
+    }
+
+
+@app.get("/api/scan/{scan_id}/table/{filename}")
+async def read_table(
+    scan_id:  str,
+    filename: str,
+    page:     int = 1,
+    per_page: int = 50,
+    search:   str = "",
+    sort_col: str = "",
+    sort_dir: str = "asc",
+):
+    """Lecture paginée d'un CSV extrait — max 500 lignes en mémoire, déduplication incluse."""
+    import csv as _csv
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide")
+    if not filename.endswith(".csv"):
+        raise HTTPException(status_code=400, detail="CSV uniquement")
+    path = REPORTS_CSV_DIR / scan_id / filename
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Fichier introuvable")
+
+    per_page = max(1, min(per_page, 100))
+    MAX_ROWS = 500
+
+    with open(path, newline="", encoding="utf-8", errors="replace") as fh:
+        reader  = _csv.DictReader(fh)
+        columns = list(reader.fieldnames or [])
+        seen:   set = set()
+        rows:   List[Dict] = []
+        for row in reader:
+            if len(rows) >= MAX_ROWS:
+                break
+            d       = dict(row)
+            row_key = tuple(d.values())
+            if row_key in seen:
+                continue
+            seen.add(row_key)
+            if search:
+                s = search.lower()
+                if not any(s in str(v).lower() for v in d.values()):
+                    continue
+            rows.append(d)
+
+    if sort_col and sort_col in columns:
+        rows.sort(
+            key=lambda r: (r.get(sort_col) or "").lower(),
+            reverse=(sort_dir == "desc"),
+        )
+
+    total      = len(rows)
+    page       = max(1, page)
+    start      = (page - 1) * per_page
+    total_pages = max(1, (total + per_page - 1) // per_page)
+
+    return {
+        "filename":    filename,
+        "columns":     columns,
+        "rows":        rows[start: start + per_page],
+        "total":       total,
+        "page":        page,
+        "per_page":    per_page,
+        "total_pages": total_pages,
+        "capped_at":   MAX_ROWS,
+        "search":      search,
+        "sort_col":    sort_col,
+        "sort_dir":    sort_dir,
+    }
+
+
 @app.get("/api/reports")
 async def list_reports():
     return _reporter.list_all()
