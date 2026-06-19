@@ -545,6 +545,162 @@ TECH_DORKS = [
     'inurl:"?page=contact" -facebook -linkedin -admin',
 ]
 
+
+# ── Niches 10k-100k users — indicateur technique + secteur ────
+# But : sites avec vraie app web (params PHP, login, search, catalog)
+# Pas de static pages — combinaison niche + vecteur technique obligatoire
+
+# Paramètres GET injectables par niche
+_PARAMS = [
+    'inurl:"?id="',
+    'inurl:"?cat="',
+    'inurl:"?page="',
+    'inurl:"?article="',
+    'inurl:"?ref="',
+    'inurl:"?search="',
+]
+
+# Indicateurs de vraie app (login, inscription, catalogue)
+_APP_INDICATORS = [
+    'inurl:"login.php"',
+    'inurl:"inscription.php"',
+    'inurl:"register.php"',
+    'inurl:"search.php"',
+    'inurl:"catalogue.php"',
+    'inurl:"annonce.php"',
+    'inurl:"reservation.php"',
+    'inurl:"booking.php"',
+    'inurl:"produit.php"',
+    'inurl:"fiche.php"',
+    'inurl:"detail.php"',
+    'inurl:"member.php"',
+    'inurl:"profil.php"',
+    'inurl:"account.php"',
+    'inurl:"espace-membre"',
+]
+
+# Niches FR ciblées 10k-100k (pas trop larges, pas trop étroites)
+_NICHES_FR = [
+    '"association sportive"',
+    '"club de sport"',
+    '"école de musique"',
+    '"cours de danse"',
+    '"école de yoga"',
+    '"cabinet médical"',
+    '"cabinet dentaire"',
+    '"cabinet vétérinaire"',
+    '"pharmacie"',
+    '"ostéopathe"',
+    '"physiothérapeute"',
+    '"cabinet de kinésithérapie"',
+    '"traiteur"',
+    '"salle de réception"',
+    '"domaine viticole"',
+    '"cave viticole"',
+    '"fromagerie"',
+    '"boulangerie artisanale"',
+    '"chocolatier"',
+    '"épicerie fine"',
+    '"gîte rural"',
+    '"chambre d\'hôtes"',
+    '"camping"',
+    '"club de golf"',
+    '"club de tennis"',
+    '"école de ski"',
+    '"location de vacances"',
+    '"agence immobilière"',
+    '"agence de voyage"',
+    '"agence événementielle"',
+    '"auto-école"',
+    '"centre de formation"',
+    '"soutien scolaire"',
+    '"cours particuliers"',
+    '"fiduciaire"',
+    '"expert-comptable"',
+    '"cabinet d\'avocat"',
+    '"étude notariale"',
+    '"courtier en assurance"',
+    '"club de randonnée"',
+    '"association culturelle"',
+    '"maison de retraite"',
+    '"résidence seniors"',
+    '"service de garde"',
+    '"crèche"',
+    '"librairie"',
+    '"galerie d\'art"',
+    '"salon de coiffure"',
+    '"spa"',
+    '"centre de bien-être"',
+    '"clinique esthétique"',
+    '"pépinière"',
+    '"jardinerie"',
+    '"animalerie"',
+    '"pension pour chiens"',
+]
+
+# Niches DE ciblées 10k-100k
+_NICHES_DE = [
+    '"Sportverein"',
+    '"Musikschule"',
+    '"Tanzschule"',
+    '"Yoga-Schule"',
+    '"Zahnarztpraxis"',
+    '"Tierarztpraxis"',
+    '"Apotheke"',
+    '"Physiotherapie"',
+    '"Osteopathie"',
+    '"Weingut"',
+    '"Käserei"',
+    '"Bäckerei"',
+    '"Konditorei"',
+    '"Ferienhaus"',
+    '"Ferienwohnung"',
+    '"Campingplatz"',
+    '"Tennisclub"',
+    '"Golfclub"',
+    '"Skischule"',
+    '"Immobilienmakler"',
+    '"Autoschule"',
+    '"Nachhilfeschule"',
+    '"Berufsschule"',
+    '"Treuhandbüro"',
+    '"Anwaltskanzlei"',
+    '"Versicherungsmakler"',
+    '"Wanderclub"',
+    '"Kulturverein"',
+    '"Altersheim"',
+    '"Kinderbetreuung"',
+    '"Buchhandlung"',
+    '"Kunstgalerie"',
+    '"Coiffeursalon"',
+    '"Wellness-Center"',
+    '"Tierpension"',
+    '"Reisebüro"',
+    '"Eventlocation"',
+    '"Partyservice"',
+]
+
+# Niches IT ciblées 10k-100k
+_NICHES_IT = [
+    '"studio medico"',
+    '"studio dentistico"',
+    '"farmacia"',
+    '"fisioterapia"',
+    '"cantina vinicola"',
+    '"caseificio"',
+    '"panificio"',
+    '"agriturismo"',
+    '"bed and breakfast"',
+    '"tennis club"',
+    '"scuola di danza"',
+    '"agenzia immobiliare"',
+    '"autoscuola"',
+    '"studio legale"',
+    '"associazione sportiva"',
+    '"centro benessere"',
+]
+
+
 def generate():
     dorks = set()
 
@@ -556,56 +712,48 @@ def generate():
     for d in SCANNER_DORKS:
         dorks.add(d)
 
-    # FR : secteur + action (sans région)
-    for sect in SECT_FR:
-        for act in ACT_FR:
+    # ── Niches 10k-100k : niche + param GET injectable ──────────
+    for niche in _NICHES_FR + _NICHES_DE + _NICHES_IT:
+        for param in _PARAMS:
+            dorks.add(f'{param} inurl:".php" {niche} {X}')
+
+    # ── Niches 10k-100k : niche + indicateur app (login/catalog) ─
+    for niche in _NICHES_FR:
+        for ind in _APP_INDICATORS[:8]:
+            dorks.add(f'{ind} {niche} {X}')
+    for niche in _NICHES_DE:
+        for ind in _APP_INDICATORS[:8]:
+            dorks.add(f'{ind} {niche} {X}')
+    for niche in _NICHES_IT:
+        for ind in _APP_INDICATORS[:6]:
+            dorks.add(f'{ind} {niche} {X}')
+
+    # ── Niches 10k-100k + région (sans param, pour CMS/WP) ───────
+    for niche in _NICHES_FR[:25]:
+        for reg in REG_FR[:8]:
+            dorks.add(f'inurl:".php" {niche} {reg} {X}')
+    for niche in _NICHES_DE[:25]:
+        for reg in REG_DE[:8]:
+            dorks.add(f'inurl:".php" {niche} {reg} {X}')
+
+    # ── Niches + WP (beaucoup de petits sites WP dans ces secteurs) ─
+    for niche in _NICHES_FR[:20]:
+        dorks.add(f'inurl:"wp-login.php" {niche} -wordpress.com {X}')
+        dorks.add(f'inurl:"/wp-content/" {niche} -wordpress.com {X}')
+    for niche in _NICHES_DE[:20]:
+        dorks.add(f'inurl:"wp-login.php" {niche} -wordpress.com {X}')
+        dorks.add(f'inurl:"/wp-content/" {niche} -wordpress.com {X}')
+
+    # ── Ancien secteur + action (conservé, moins prioritaire) ────
+    for sect in SECT_FR[:30]:
+        for act in ACT_FR[:5]:
             dorks.add(f'{sect} {act} {X}')
-
-    # FR : secteur + action + région
-    for sect in SECT_FR:
-        for act in ACT_FR[:8]:          # 8 actions les plus utiles
-            for reg in REG_FR:
-                dorks.add(f'{sect} {act} {reg} {X}')
-
-    # FR : inurl + secteur
-    for sect in SECT_FR:
-        dorks.add(f'inurl:".php" {sect} {X}')
-        dorks.add(f'intitle:"inscription" {sect} {X}')
-        dorks.add(f'intitle:"formulaire" {sect} {X}')
-
-    # DE : secteur + action (sans région)
-    for sect in SECT_DE:
-        for act in ACT_DE:
+    for sect in SECT_DE[:30]:
+        for act in ACT_DE[:5]:
             dorks.add(f'{sect} {act} {X}')
-
-    # DE : secteur + action + région
-    for sect in SECT_DE:
-        for act in ACT_DE[:7]:
-            for reg in REG_DE:
-                dorks.add(f'{sect} {act} {reg} {X}')
-
-    # DE : inurl + secteur
-    for sect in SECT_DE:
-        dorks.add(f'inurl:".php" {sect} {X}')
-        dorks.add(f'intitle:"Anmeldung" {sect} {X}')
-        dorks.add(f'intitle:"Formular" {sect} {X}')
-
-    # IT : secteur + action (sans région)
-    for sect in SECT_IT:
-        for act in ACT_IT:
+    for sect in SECT_IT[:15]:
+        for act in ACT_IT[:4]:
             dorks.add(f'{sect} {act} {X}')
-
-    # IT : secteur + action + région
-    for sect in SECT_IT:
-        for act in ACT_IT[:6]:
-            for reg in REG_IT:
-                dorks.add(f'{sect} {act} {reg} {X}')
-
-    # Croix FR/DE : secteur bilingue + action
-    pairs_fr_de = list(zip(SECT_FR[:30], SECT_DE[:30]))
-    for sf, sd in pairs_fr_de:
-        for act_f, act_d in zip(ACT_FR[:5], ACT_DE[:5]):
-            dorks.add(f'({sf} OR {sd}) ({act_f} OR {act_d}) {X}')
 
     return sorted(dorks)
 
