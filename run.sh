@@ -12,8 +12,8 @@ if [ -f "$VENV" ]; then
   source "$VENV"
 fi
 
-HOST="${HOST:-127.0.0.1}"
-PORT="${PORT:-8000}"
+HOST="${HOST:-0.0.0.0}"
+PORT="${PORT:-9000}"
 
 echo ""
 echo "  ╔══════════════════════════════════════════╗"

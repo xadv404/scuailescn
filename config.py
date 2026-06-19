@@ -23,8 +23,8 @@ SQLMAP_PATH    = os.environ.get("SQLMAP_PATH", "sqlmap")
 SQLMAP_TIMEOUT = int(os.environ.get("SQLMAP_TIMEOUT", "600"))
 
 # ── FastAPI server ─────────────────────────────────────────────
-HOST = os.environ.get("HOST", "127.0.0.1")
-PORT = int(os.environ.get("PORT", "8000"))
+HOST = os.environ.get("HOST", "0.0.0.0")
+PORT = int(os.environ.get("PORT", "9000"))
 
 # ── Default scan configuration ─────────────────────────────────
 SCAN_DEFAULT_CONFIG: dict = {
