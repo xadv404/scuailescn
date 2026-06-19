@@ -13,8 +13,8 @@ build/
 .eggs/
 
 # Runtime artifacts – never commit
-reports/*.json
-logs/*.log
+reports/
+logs/
 temp/
 
 # OS
