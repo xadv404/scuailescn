@@ -5,6 +5,7 @@ Flow : targets.txt → pipeline → CSV
 """
 import asyncio
 import uuid
+from collections import deque
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -40,6 +41,17 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 _runner   = SQLMapRunner()
 _reporter = ReportGenerator()
 _scans: Dict[str, Dict[str, Any]] = {}
+_event_log: deque = deque(maxlen=200)
+
+
+def _log_event(scan_id: str, url: str, msg: str, pct: int = 0) -> None:
+    _event_log.appendleft({
+        "ts":      datetime.now().strftime("%H:%M:%S"),
+        "scan_id": scan_id,
+        "url":     url,
+        "msg":     msg,
+        "pct":     pct,
+    })
 
 
 # ── Request schemas ────────────────────────────────────────────
@@ -72,7 +84,9 @@ async def _run_scan(scan_id: str, url: str, config: Dict[str, Any]) -> None:
         _scans[scan_id].update(kw)
 
     def _progress(msg: str, done: int, total: int) -> None:
-        _upd(progress=msg, progress_pct=min(85, done))
+        pct = min(92, done)
+        _upd(progress=msg, progress_pct=pct)
+        _log_event(scan_id, url, msg, pct)
 
     try:
         _upd(status="running", progress="Démarrage pipeline…", progress_pct=3)
@@ -129,6 +143,43 @@ async def _run_scan(scan_id: str, url: str, config: Dict[str, Any]) -> None:
 
 
 # ── API routes ─────────────────────────────────────────────────
+
+@app.get("/api/stats")
+async def get_stats():
+    """Stats temps réel pour la page Stats du frontend."""
+    active    = [s for s in _scans.values() if s.get("status") == "running"]
+    completed = [s for s in _scans.values() if s.get("status") == "completed"]
+    failed    = [s for s in _scans.values() if s.get("status") == "failed"]
+
+    total_vulns = 0
+    sqli_count  = 0
+    dbs_count   = 0
+    for s in completed:
+        rep = s.get("report") or {}
+        total_vulns += len(rep.get("findings", []) or [])
+        if s.get("sqli_confirmed"):
+            sqli_count += 1
+            dbs_count  += len(s.get("csv_files", []))
+
+    return {
+        "active_count":    len(active),
+        "completed_count": len(completed),
+        "failed_count":    len(failed),
+        "total_vulns":     total_vulns,
+        "sqli_confirmed":  sqli_count,
+        "dbs_extracted":   dbs_count,
+        "active_scans": [
+            {
+                "scan_id":      s["scan_id"],
+                "url":          s["url"],
+                "progress":     s.get("progress", ""),
+                "progress_pct": s.get("progress_pct", 0),
+            }
+            for s in active
+        ],
+        "events": list(_event_log)[:60],
+    }
+
 
 @app.get("/api/health")
 async def health():

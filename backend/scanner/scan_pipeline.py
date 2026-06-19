@@ -1,11 +1,11 @@
 """
-Pipeline de pentest automatisé — agent mode.
+Pipeline de pentest automatisé.
 
 Flow pour chaque cible :
-  1. Recon passif    (8 modules en parallèle)
-  2. SQLMap          (détection + extraction si injection confirmée)
-  3. Analyse         (risk scoring, déduplication)
-  4. Export CSV      (findings + données extraites)
+  1. Pré-filtre SQLi rapide  (2-8 s)  → décision go/no-go pour SQLMap
+  2. Recon passif            (parallel avec étape 1)
+  3. SQLMap dump             (uniquement sur candidates — detect+dump en 1 passe)
+  4. Analyse & export CSV
 """
 import asyncio
 import time
@@ -28,13 +28,13 @@ from backend.scanner.modules.file_security     import FileSecurityModule
 from backend.scanner.modules.injection         import InjectionModule
 from backend.scanner.modules.sensitive_data    import SensitiveDataModule
 from backend.scanner.modules.xss_csrf         import XssCsrfModule
+from backend.scanner.modules.sqli_prefilter   import sqli_prefilter
 
-# Phases du recon passif (parallèle à l'intérieur de chaque phase)
 _PHASE_1 = [SensitiveDataModule, AuthenticationModule]
 _PHASE_2 = [InjectionModule, XssCsrfModule, DatabaseSecurityModule]
 _PHASE_3 = [AccessControlModule]
 _PHASE_4 = [APISecurityModule, FileSecurityModule]
-_ALL_PHASES = [_PHASE_1, _PHASE_2, _PHASE_3, _PHASE_4]
+_ALL_PHASES  = [_PHASE_1, _PHASE_2, _PHASE_3, _PHASE_4]
 _PHASE_NAMES = ["Reconnaissance", "Injections", "Contrôle d'accès", "API & fichiers"]
 
 ProgressCallback = Callable[[str, int, int], None]
@@ -55,13 +55,8 @@ async def run_passive_phases(
     progress_callback: Optional[ProgressCallback] = None,
     timeout_per_phase: int = 90,
 ) -> Dict[str, Any]:
-    """
-    Exécute les 4 phases de recon passif.
-    Retourne {findings, phases_meta}.
-    """
     findings: List[Dict[str, Any]] = []
     phases_meta: List[Dict[str, Any]] = []
-    total_phases = len(_ALL_PHASES)
 
     def _cb(msg: str, pct: int) -> None:
         if progress_callback:
@@ -70,11 +65,11 @@ async def run_passive_phases(
     async with AuditHttpClient(config=config) as client:
         for idx, phase_modules in enumerate(_ALL_PHASES):
             name     = _PHASE_NAMES[idx]
-            pct_base = 5 + round((idx / total_phases) * 40)
-            pct_end  = 5 + round(((idx + 1) / total_phases) * 40)
-            _cb(f"Recon {idx+1}/{total_phases} — {name}…", pct_base)
+            pct_base = 5  + round((idx / len(_ALL_PHASES)) * 40)
+            pct_end  = 5  + round(((idx + 1) / len(_ALL_PHASES)) * 40)
+            _cb(f"Recon {idx+1}/{len(_ALL_PHASES)} — {name}…", pct_base)
 
-            t0 = time.monotonic()
+            t0    = time.monotonic()
             tasks = [asyncio.create_task(_run_module_safe(cls, client, url)) for cls in phase_modules]
             try:
                 results = await asyncio.wait_for(
@@ -108,87 +103,64 @@ async def run_full_pipeline(
     progress_callback: Optional[ProgressCallback] = None,
     sqlmap_runner=None,
 ) -> Dict[str, Any]:
-    """
-    Pipeline complet pour une cible.
-
-    Retourne :
-      findings, risk_score, risk_level, summary, recommendations,
-      phases, database_type, technologies, sqli_confirmed,
-      csv_files, duration_s
-    """
-    cfg    = config or {}
+    cfg     = config or {}
     t_start = time.monotonic()
 
     def _cb(msg: str, pct: int) -> None:
         if progress_callback:
             progress_callback(msg, pct, 100)
 
-    _cb("Initialisation du pipeline…", 3)
+    _cb("Initialisation…", 3)
 
-    # ══ PHASES 1+2 — Recon passif + SQLi detect EN PARALLÈLE ════
-    # Les deux tournent en même temps pour gagner du temps.
-    _cb("Scan vulnérabilités & injection SQL en parallèle…", 5)
+    # ══ PHASES 1+2 — Pré-filtre SQLi + recon passif EN PARALLÈLE ══
+    _cb("Pré-filtre SQLi & scan vulnérabilités en parallèle…", 5)
 
-    passive_task = asyncio.create_task(
+    prefilter_task = asyncio.create_task(sqli_prefilter(url, timeout=8.0))
+    passive_task   = asyncio.create_task(
         run_passive_phases(url, cfg, progress_callback=None, timeout_per_phase=90)
     )
-    detect_task = asyncio.create_task(
-        sqlmap_runner.detect_injections(url, scan_id, config=cfg)
-    ) if sqlmap_runner else None
 
-    passive_result = await passive_task
-    det_result     = (await detect_task) if detect_task else {}
+    prefilter_result = await prefilter_task
+    passive_result   = await passive_task
 
-    sqli_confirmed  = det_result.get("sqli_confirmed", False)
-    stdout_combined = det_result.get("stdout", "")
-    sqlmap_out_dir  = det_result.get("output_dir", "")
-    csv_from_sqlmap: List[str] = []
+    candidate   = prefilter_result.get("candidate", False)
+    confidence  = prefilter_result.get("confidence", "none")
+    pf_reasons  = prefilter_result.get("reasons", [])
 
     _cb(
-        "Injection SQL confirmée — lancement énumération…" if sqli_confirmed
-        else "Analyse des résultats…",
-        55,
+        f"Pré-filtre : {'candidat SQLi (' + confidence + ')' if candidate else 'aucun vecteur — SQLMap ignoré'}",
+        52,
     )
 
-    # ══ PHASE 3 — Énumération BDs/tables (si injection) ══════════
-    if sqli_confirmed and sqlmap_runner:
-        _cb("Énumération des bases de données…", 57)
-        enum = await sqlmap_runner.enumerate_db(url, scan_id, config=cfg)
-        stdout_combined += "\n" + enum.get("stdout", "")
-        _cb("Énumération terminée", 68)
-
-        # ══ PHASE 4 — Dump (si activé) ════════════════════════════
-        from config import ALLOW_EXTRACTION_MODE
-        if ALLOW_EXTRACTION_MODE:
-            _cb("Extraction des données (dump)…", 70)
-            dump = await sqlmap_runner.dump_data(url, scan_id, config=cfg)
-            stdout_combined += "\n" + dump.get("stdout", "")
-            csv_from_sqlmap  = dump.get("csv_files", [])
-            _cb("Dump terminé", 82)
-        else:
-            _cb("Extraction désactivée", 82)
-
-    sqlmap_result = {
-        "success":        bool(sqlmap_runner and det_result.get("success")),
-        "sqli_confirmed": sqli_confirmed,
-        "stdout":         stdout_combined,
-        "stderr":         "",
-        "output_dir":     sqlmap_out_dir,
-        "csv_files":      csv_from_sqlmap,
+    # ══ PHASE 3 — SQLMap dump (uniquement sur candidats) ══════════
+    sqlmap_result: Dict[str, Any] = {
+        "success": False, "sqli_confirmed": False,
+        "stdout": "", "stderr": "", "output_dir": "", "csv_files": [],
     }
 
+    if candidate and sqlmap_runner:
+        # Extraire un hint SGBD depuis le pré-filtre si possible
+        db_hint = _db_hint_from_reasons(pf_reasons)
+        _cb(f"SQLMap dump en cours{' [' + db_hint + ']' if db_hint else ''}…", 55)
+        sqlmap_result = await sqlmap_runner.run_scan(
+            url, scan_id, config=cfg, db_hint=db_hint,
+        )
+        sqli_label = "SQLi confirmée ✓" if sqlmap_result.get("sqli_confirmed") else "SQLi non confirmée"
+        _cb(f"SQLMap terminé — {sqli_label}", 80)
+    else:
+        _cb("SQLMap ignoré (pas de vecteur d'injection)", 80)
+
     # ── Fusion des findings ────────────────────────────────────────
-    _cb("Analyse et fusion des résultats…", 83)
+    _cb("Analyse et fusion…", 83)
 
     all_findings: List[Dict[str, Any]] = list(passive_result.get("findings", []))
 
-    # Importer l'analyseur SQLMap (v3, format compatible)
-    if sqlmap_result.get("success"):
+    if sqlmap_result.get("success") and sqlmap_result.get("stdout"):
         try:
             from backend.scanner.analyzer import ResultAnalyzer
-            _ana = ResultAnalyzer()
-            stdout  = sqlmap_result.get("stdout", "")
-            out_dir = sqlmap_result.get("output_dir", "")
+            _ana      = ResultAnalyzer()
+            stdout    = sqlmap_result.get("stdout", "")
+            out_dir   = sqlmap_result.get("output_dir", "")
             sql_finds = _ana.merge(
                 _ana.analyze(stdout, url),
                 _ana.analyze_from_dir(out_dir, url),
@@ -205,9 +177,8 @@ async def run_full_pipeline(
     all_findings = deduplicate(all_findings)
     all_findings = sort_by_severity(all_findings)
 
-    # ── Risk scoring ───────────────────────────────────────────────
-    risk_score  = calculate_risk_score(all_findings)
-    technologies = _extract_technologies(all_findings, sqlmap_result)
+    risk_score    = calculate_risk_score(all_findings)
+    technologies  = _extract_technologies(all_findings, sqlmap_result)
     database_type = (
         _detect_db_from_sqlmap(sqlmap_result.get("stdout", ""))
         or _detect_db_from_findings(all_findings)
@@ -222,34 +193,35 @@ async def run_full_pipeline(
         database_info={"phases": passive_result.get("phases", [])},
     )
     summary["phases"] = passive_result.get("phases", [])
+    summary["prefilter"] = {
+        "candidate":  candidate,
+        "confidence": confidence,
+        "reasons":    pf_reasons,
+    }
 
     recommendations = build_recommendations(all_findings)
     sqli_confirmed  = sqlmap_result.get("sqli_confirmed", False)
 
-    # ── CSV ────────────────────────────────────────────────────────
-    _cb("Export CSV…", 85)
-    csv_files: List[str] = []
-
-    # CSV des findings de vulnérabilités
+    # ── Export CSV ────────────────────────────────────────────────
+    _cb("Export CSV…", 87)
     from backend.scanner.csv_exporter import (
         export_findings_csv, export_summary_csv, list_csv_files,
     )
     duration_s = round(time.monotonic() - t_start, 1)
+    csv_files: List[str] = []
 
     fc = export_findings_csv(all_findings, scan_id, url)
     if fc:
         csv_files.append(fc)
 
-    # CSVs des données extraites par SQLMap
-    sqlmap_csv = sqlmap_result.get("csv_files", [])
-    csv_files.extend(sqlmap_csv)
+    csv_files.extend(sqlmap_result.get("csv_files", []))
 
     sc = export_summary_csv(
         scan_id=scan_id, url=url,
         risk_score=risk_score, risk_level=summary["risk_level"],
         findings=all_findings, sqli_confirmed=sqli_confirmed,
         database_type=database_type, technologies=technologies,
-        duration_s=duration_s, csv_data_files=sqlmap_csv,
+        duration_s=duration_s, csv_data_files=sqlmap_result.get("csv_files", []),
     )
     if sc:
         csv_files.append(sc)
@@ -268,10 +240,25 @@ async def run_full_pipeline(
         "sqli_confirmed":  sqli_confirmed,
         "csv_files":       csv_files,
         "duration_s":      duration_s,
+        "prefilter":       prefilter_result,
     }
 
 
 # ── Helpers ────────────────────────────────────────────────────
+
+def _db_hint_from_reasons(reasons: List[str]) -> Optional[str]:
+    combined = " ".join(reasons).lower()
+    for db, kws in (
+        ("mysql",      ["mysql", "mariadb"]),
+        ("postgresql", ["pgsql", "postgresql", "pg::"]),
+        ("mssql",      ["mssql", "microsoft sql", "ole db"]),
+        ("oracle",     ["ora-", "oracle"]),
+        ("sqlite",     ["sqlite"]),
+    ):
+        if any(kw in combined for kw in kws):
+            return db
+    return None
+
 
 def _extract_technologies(findings: List[Dict], sqlmap_result: Dict) -> List[str]:
     techs: List[str] = []
@@ -280,18 +267,18 @@ def _extract_technologies(findings: List[Dict], sqlmap_result: Dict) -> List[str
         + " " + sqlmap_result.get("stdout", "")
     ).lower()
     for tech, keywords in (
-        ("PHP",       ["php", "x-powered-by: php"]),
-        ("WordPress", ["wordpress", "wp-content", "wp-admin"]),
-        ("Drupal",    ["drupal"]),
-        ("Nginx",     ["nginx"]),
-        ("Apache",    ["apache"]),
-        ("Node.js",   ["express", "node.js"]),
-        ("Django",    ["django", "csrfmiddlewaretoken"]),
-        ("Laravel",   ["laravel"]),
-        ("ASP.NET",   ["asp.net", "x-aspnet-version"]),
-        ("Spring",    ["org.springframework", "javax.servlet"]),
-        ("Ruby/Rails",["rack", "rails"]),
-        ("Tomcat",    ["tomcat", "catalina"]),
+        ("PHP",        ["php", "x-powered-by: php"]),
+        ("WordPress",  ["wordpress", "wp-content", "wp-admin"]),
+        ("Drupal",     ["drupal"]),
+        ("Nginx",      ["nginx"]),
+        ("Apache",     ["apache"]),
+        ("Node.js",    ["express", "node.js"]),
+        ("Django",     ["django", "csrfmiddlewaretoken"]),
+        ("Laravel",    ["laravel"]),
+        ("ASP.NET",    ["asp.net", "x-aspnet-version"]),
+        ("Spring",     ["org.springframework", "javax.servlet"]),
+        ("Ruby/Rails", ["rack", "rails"]),
+        ("Tomcat",     ["tomcat", "catalina"]),
     ):
         if any(kw in combined for kw in keywords) and tech not in techs:
             techs.append(tech)

@@ -820,11 +820,108 @@ function exportReport() {
   URL.revokeObjectURL(url);
 }
 
+/* ── Page routing ─────────────────────────────────────────────── */
+let _currentPage = 'scan';
+const _pages = ['scan', 'stats', 'resultats'];
+
+function showPage(name) {
+  _currentPage = name;
+  _pages.forEach(p => {
+    const el = $(`#page-${p}`);
+    if (el) el.style.display = p === name ? '' : 'none';
+    const btn = $(`#nav-${p}`);
+    if (btn) btn.classList.toggle('nav-btn--active', p === name);
+  });
+  if (name === 'resultats') loadReports();
+  if (name === 'stats') refreshStats();
+}
+window.showPage = showPage;
+
+/* ── Stats page ───────────────────────────────────────────────── */
+let _sessionStart = Date.now();
+let _seenEvents   = new Set();
+
+function clearConsole() {
+  _seenEvents.clear();
+  const el = $('#stats-console');
+  if (el) el.innerHTML = '<span class="console-idle">Console vidée.</span>';
+}
+window.clearConsole = clearConsole;
+
+async function refreshStats() {
+  try {
+    const d = await apiFetch('/api/stats');
+
+    // Compteurs
+    const set = (id, v) => { const el = $(`#${id}`); if (el) el.textContent = v; };
+    set('st-active',  d.active_count);
+    set('st-vulns',   d.total_vulns);
+    set('st-sqli',    d.sqli_confirmed);
+    set('st-dbs',     d.dbs_extracted);
+    set('st-done',    d.completed_count);
+
+    // Badge nav
+    const badge = $('#nav-active-count');
+    if (badge) {
+      badge.textContent = d.active_count;
+      badge.style.display = d.active_count > 0 ? '' : 'none';
+    }
+
+    // Elapsed
+    const elapsed = Math.floor((Date.now() - _sessionStart) / 1000);
+    const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+    const ss = String(elapsed % 60).padStart(2, '0');
+    set('st-elapsed', `${mm}:${ss}`);
+
+    // Cibles actives
+    const listEl = $('#stats-active-list');
+    if (listEl) {
+      if (d.active_scans.length === 0) {
+        listEl.innerHTML = '<p class="stats-empty">Aucun scan actif.</p>';
+      } else {
+        listEl.innerHTML = d.active_scans.map(s => `
+          <div class="active-target">
+            <div class="active-target-url">${escHtml(truncate(s.url, 60))}</div>
+            <div class="active-target-progress">${escHtml(s.progress || '…')} — ${s.progress_pct}%</div>
+            <div class="active-target-bar">
+              <div class="active-target-bar-fill" style="width:${s.progress_pct}%"></div>
+            </div>
+          </div>`).join('');
+      }
+    }
+
+    // Console — nouveaux événements seulement
+    const consoleEl = $('#stats-console');
+    if (consoleEl && d.events && d.events.length) {
+      const newEvents = d.events.filter(e => {
+        const key = `${e.ts}:${e.scan_id}:${e.msg}`;
+        if (_seenEvents.has(key)) return false;
+        _seenEvents.add(key);
+        return true;
+      });
+      if (newEvents.length) {
+        const idle = consoleEl.querySelector('.console-idle');
+        if (idle) idle.remove();
+        const lines = newEvents.map(e => `
+          <div class="console-line">
+            <span class="console-ts">${escHtml(e.ts)}</span>
+            <span class="console-id">${escHtml(e.scan_id)}</span>
+            <span class="console-msg">${escHtml(e.msg)}</span>
+          </div>`).join('');
+        consoleEl.insertAdjacentHTML('afterbegin', lines);
+      }
+    }
+
+  } catch (_) {}
+}
+
 /* ── Bootstrap ───────────────────────────────────────────────── */
 document.addEventListener('DOMContentLoaded', () => {
   startClock();
   checkHealth();
   setInterval(checkHealth, 30_000);
+  setInterval(refreshStats, 2500);
+  refreshStats();
 
   addUrlRow();
   $('#btn-add-url').addEventListener('click', () => addUrlRow());
