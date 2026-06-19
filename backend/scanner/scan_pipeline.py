@@ -26,12 +26,14 @@ from backend.scanner.modules.authentication    import AuthenticationModule
 from backend.scanner.modules.database_security import DatabaseSecurityModule
 from backend.scanner.modules.file_security     import FileSecurityModule
 from backend.scanner.modules.injection         import InjectionModule
+from backend.scanner.modules.lfi               import LFIModule
 from backend.scanner.modules.sensitive_data    import SensitiveDataModule
 from backend.scanner.modules.xss_csrf         import XssCsrfModule
 from backend.scanner.modules.sqli_prefilter   import sqli_prefilter
+from backend.scanner.exploit_engine           import ExploitEngine
 
 _PHASE_1 = [SensitiveDataModule, AuthenticationModule]
-_PHASE_2 = [InjectionModule, XssCsrfModule, DatabaseSecurityModule]
+_PHASE_2 = [InjectionModule, XssCsrfModule, DatabaseSecurityModule, LFIModule]
 _PHASE_3 = [AccessControlModule]
 _PHASE_4 = [APISecurityModule, FileSecurityModule]
 _ALL_PHASES  = [_PHASE_1, _PHASE_2, _PHASE_3, _PHASE_4]
@@ -132,23 +134,36 @@ async def run_full_pipeline(
         52,
     )
 
-    # ══ PHASE 3 — SQLMap dump (uniquement sur candidats) ══════════
+    # ══ PHASE 3 — Exploitation (sans SQLMap en priorité) ══════════
     sqlmap_result: Dict[str, Any] = {
         "success": False, "sqli_confirmed": False,
         "stdout": "", "stderr": "", "output_dir": "", "csv_files": [],
     }
 
-    if candidate and sqlmap_runner:
-        # Extraire un hint SGBD depuis le pré-filtre si possible
+    # Step 3a — exploit engine (pure Python, no SQLMap)
+    _cb("Exploitation des vulnérabilités (sans SQLMap)…", 54)
+    _exploit_engine = ExploitEngine(scan_id)
+    exploit_result  = await _exploit_engine.run(
+        url=url,
+        findings=passive_result.get("findings", []),
+        progress_callback=progress_callback,
+    )
+    exploit_csv           = exploit_result.get("csv_files", [])
+    exploit_sqli_confirmed = exploit_result.get("sqli_confirmed", False)
+
+    # Step 3b — SQLMap fallback (only if candidate but exploit engine couldn't extract SQL data)
+    if candidate and sqlmap_runner and not exploit_sqli_confirmed:
         db_hint = _db_hint_from_reasons(pf_reasons)
-        _cb(f"SQLMap dump en cours{' [' + db_hint + ']' if db_hint else ''}…", 55)
+        _cb(f"SQLMap fallback{' [' + db_hint + ']' if db_hint else ''}…", 75)
         sqlmap_result = await sqlmap_runner.run_scan(
             url, scan_id, config=cfg, db_hint=db_hint,
         )
         sqli_label = "SQLi confirmée ✓" if sqlmap_result.get("sqli_confirmed") else "SQLi non confirmée"
         _cb(f"SQLMap terminé — {sqli_label}", 80)
+    elif exploit_sqli_confirmed:
+        _cb("SQLi extraite sans SQLMap ✓", 80)
     else:
-        _cb("SQLMap ignoré (pas de vecteur d'injection)", 80)
+        _cb("Aucun vecteur d'injection exploitable", 80)
 
     # ── Fusion des findings ────────────────────────────────────────
     _cb("Analyse et fusion…", 83)
@@ -200,7 +215,7 @@ async def run_full_pipeline(
     }
 
     recommendations = build_recommendations(all_findings)
-    sqli_confirmed  = sqlmap_result.get("sqli_confirmed", False)
+    sqli_confirmed  = exploit_sqli_confirmed or sqlmap_result.get("sqli_confirmed", False)
 
     # ── Export CSV ────────────────────────────────────────────────
     _cb("Export CSV…", 87)
@@ -214,6 +229,9 @@ async def run_full_pipeline(
     if fc:
         csv_files.append(fc)
 
+    # Exploit engine data files (union/error-based, LFI, RCE)
+    csv_files.extend(exploit_csv)
+    # SQLMap fallback data files
     csv_files.extend(sqlmap_result.get("csv_files", []))
 
     sc = export_summary_csv(
@@ -241,6 +259,7 @@ async def run_full_pipeline(
         "csv_files":       csv_files,
         "duration_s":      duration_s,
         "prefilter":       prefilter_result,
+        "exploit":         exploit_result,
     }
 
 
