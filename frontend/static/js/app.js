@@ -345,8 +345,10 @@ window.removeScan = removeScan;
 async function loadReports() {
   const c = $('#reports-list');
   try {
-    const reports = await apiFetch('/api/reports');
-    if (!reports.length) { c.innerHTML = '<p class="empty-state">Aucun audit disponible.</p>'; return; }
+    const all = await apiFetch('/api/reports');
+    // N'afficher que les cibles avec DB extraite (SQLi confirmé)
+    const reports = all.filter(r => r.sqli_confirmed);
+    if (!reports.length) { c.innerHTML = '<p class="empty-state">Aucune DB extraite pour l\'instant.</p>'; return; }
     c.innerHTML = `
     <table class="report-table">
       <thead><tr>

@@ -42,6 +42,7 @@ _runner   = SQLMapRunner()
 _reporter = ReportGenerator()
 _scans: Dict[str, Dict[str, Any]] = {}
 _event_log: deque = deque(maxlen=200)
+_last_batch_ids: List[str] = []
 
 
 def _log_event(scan_id: str, url: str, msg: str, pct: int = 0) -> None:
@@ -146,10 +147,13 @@ async def _run_scan(scan_id: str, url: str, config: Dict[str, Any]) -> None:
 
 @app.get("/api/stats")
 async def get_stats():
-    """Stats temps réel pour la page Stats du frontend."""
-    active    = [s for s in _scans.values() if s.get("status") == "running"]
-    completed = [s for s in _scans.values() if s.get("status") == "completed"]
-    failed    = [s for s in _scans.values() if s.get("status") == "failed"]
+    """Stats temps réel pour la page Stats du frontend — dernier batch uniquement."""
+    # Filtrer sur le dernier batch lancé
+    batch = {sid: _scans[sid] for sid in _last_batch_ids if sid in _scans}
+
+    active    = [s for s in batch.values() if s.get("status") == "running"]
+    completed = [s for s in batch.values() if s.get("status") == "completed"]
+    failed    = [s for s in batch.values() if s.get("status") == "failed"]
 
     total_vulns = 0
     sqli_count  = 0
@@ -206,6 +210,7 @@ async def start_scan(req: ScanRequest, bg: BackgroundTasks):
     if not valid_urls:
         raise HTTPException(status_code=422, detail="Aucune URL valide")
 
+    global _last_batch_ids
     cfg = req.config or {}
     ids = []
     for url in valid_urls:
@@ -225,6 +230,7 @@ async def start_scan(req: ScanRequest, bg: BackgroundTasks):
         bg.add_task(_run_scan, sid, url, cfg)
         ids.append(sid)
 
+    _last_batch_ids = ids
     logger.info(f"Lancé {len(ids)} scan(s)")
     return {"scan_ids": ids, "queued": len(ids)}
 
@@ -241,6 +247,7 @@ async def upload_targets(file: UploadFile, bg: BackgroundTasks):
     # Sauvegarder pour référence
     TARGETS_FILE.write_text(raw, encoding="utf-8")
 
+    global _last_batch_ids
     ids = []
     for url in urls:
         sid = uuid.uuid4().hex[:10]
@@ -259,6 +266,7 @@ async def upload_targets(file: UploadFile, bg: BackgroundTasks):
         bg.add_task(_run_scan, sid, url, {})
         ids.append(sid)
 
+    _last_batch_ids = ids
     logger.info(f"targets.txt → {len(ids)} cibles")
     return {"scan_ids": ids, "queued": len(ids), "urls": urls}
 
