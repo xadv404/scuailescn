@@ -1,5 +1,7 @@
 """
-SQL Audit Scanner - FastAPI application (v5 — pipeline orchestration)
+SQL Audit Scanner - API (mode agent pentest automatisé)
+
+Flow : targets.txt → pipeline → CSV
 """
 import asyncio
 import uuid
@@ -10,186 +12,113 @@ from typing import Any, Dict, List, Optional
 import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from config import FRONTEND_DIR, LOGS_DIR, SCAN_DEFAULT_CONFIG
+from config import FRONTEND_DIR, LOGS_DIR, REPORTS_CSV_DIR, TARGETS_FILE
 from backend.reporter.report_generator import ReportGenerator
-from backend.scanner.scan_pipeline import run_audit_pipeline
+from backend.scanner.csv_exporter import list_csv_files
+from backend.scanner.scan_pipeline import run_full_pipeline
 from backend.scanner.sqlmap_runner import SQLMapRunner
-from backend.scanner.analyzer import ResultAnalyzer
-from backend.scanner.core.scorer import calculate_risk_score as _legacy_score
 from backend.utils.logger import setup_logger
-from backend.utils.validators import validate_scan_config, validate_urls
+from backend.utils.validators import validate_url
 
 logger = setup_logger("main", LOGS_DIR / "app.log")
 
-# ── FastAPI app ────────────────────────────────────────────────
 app = FastAPI(
-    title="SQL Audit Scanner",
-    description="Professional Security Audit Tool – local use only",
+    title="Pentest Audit Scanner",
+    description="Agent de pentest automatisé — local use only",
     version="5.0.0",
     docs_url="/api/docs",
-    redoc_url="/api/redoc",
+    redoc_url=None,
 )
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 _runner   = SQLMapRunner()
-_analyzer = ResultAnalyzer()
 _reporter = ReportGenerator()
-
-# In-memory scan registry
 _scans: Dict[str, Dict[str, Any]] = {}
 
 
 # ── Request schemas ────────────────────────────────────────────
 class ScanRequest(BaseModel):
     urls: List[str]
-    scan_type: str = "full_scan"          # "full_scan" | "deep_scan"
-    scan_config: Optional[Dict[str, Any]] = None
+    config: Optional[Dict[str, Any]] = None
 
 
-# ── Background task — Full Scan (pipeline only) ────────────────
-async def _run_full_scan(scan_id: str, url: str, config: Dict[str, Any]) -> None:
+# ── helpers ────────────────────────────────────────────────────
+
+def _parse_targets(raw: str) -> List[str]:
+    """Parse un fichier targets.txt : une URL par ligne, # = commentaire."""
+    urls = []
+    for line in raw.splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        ok, _ = validate_url(line)
+        if ok:
+            urls.append(line)
+    return urls
+
+
+# ── Background scan task ───────────────────────────────────────
+
+async def _run_scan(scan_id: str, url: str, config: Dict[str, Any]) -> None:
     start = datetime.now()
 
     def _upd(**kw: Any) -> None:
         _scans[scan_id].update(kw)
 
     def _progress(msg: str, done: int, total: int) -> None:
-        pct = min(85, done)  # pipeline reports done as actual pct
-        _upd(progress=msg, progress_pct=pct)
+        _upd(progress=msg, progress_pct=min(85, done))
 
     try:
-        _upd(status="running", progress="Démarrage du pipeline…", progress_pct=5)
-        logger.info(f"[{scan_id}] Full Scan started → {url}")
+        _upd(status="running", progress="Démarrage pipeline…", progress_pct=3)
+        logger.info(f"[{scan_id}] Scan → {url}")
 
-        pipeline_result = await run_audit_pipeline(
+        pipeline = await run_full_pipeline(
             url=url,
+            scan_id=scan_id,
             config=config,
             progress_callback=_progress,
-            timeout_per_phase=120,
+            sqlmap_runner=_runner,
         )
 
         end = datetime.now()
-        _upd(progress="Génération du rapport…", progress_pct=90)
+        _upd(progress="Génération rapport…", progress_pct=90)
 
         report = _reporter.generate(
             scan_id=scan_id,
             url=url,
-            pipeline_result=pipeline_result,
+            pipeline_result=pipeline,
             status="completed",
             start_time=start,
             end_time=end,
             scan_config=config,
-            scan_type="full_scan",
         )
 
-        _upd(status="completed", report=report, progress="Terminé", progress_pct=100)
-        logger.info(
-            f"[{scan_id}] Completed — {len(pipeline_result['findings'])} finding(s) "
-            f"— score={pipeline_result['risk_score']} level={pipeline_result['risk_level']}"
-        )
-
-    except Exception as exc:
-        end = datetime.now()
-        logger.error(f"[{scan_id}] Fatal error: {exc}", exc_info=True)
-        _upd(status="failed", error=str(exc), progress_pct=0)
-        _reporter.generate_error(
-            scan_id=scan_id, url=url, error=str(exc),
-            start_time=start, end_time=end, scan_config=config,
-        )
-
-
-# ── Background task — Deep Scan (pipeline + SQLMap) ───────────
-async def _run_deep_scan(scan_id: str, url: str, config: Dict[str, Any]) -> None:
-    start = datetime.now()
-
-    def _upd(**kw: Any) -> None:
-        _scans[scan_id].update(kw)
-
-    def _progress(msg: str, done: int, total: int) -> None:
-        # Pipeline takes 5-60%; SQLMap takes 60-90%
-        pct = 5 + round((min(done, 100) / 100) * 55)
-        _upd(progress=msg, progress_pct=pct)
-
-    try:
-        _upd(status="running", progress="Démarrage analyse approfondie…", progress_pct=5)
-        logger.info(f"[{scan_id}] Deep Scan started → {url}")
-
-        # Run pipeline and SQLMap concurrently
-        results = await asyncio.gather(
-            run_audit_pipeline(url=url, config=config, progress_callback=_progress),
-            _runner.run_scan(url, scan_id, config=config),
-            return_exceptions=True,
-        )
-
-        pipeline_result: Dict[str, Any] = (
-            results[0] if isinstance(results[0], dict)
-            else {"findings": [], "risk_score": 0, "risk_level": "NONE",
-                  "summary": {}, "recommendations": [], "phases": [],
-                  "technologies": [], "database_type": None, "duration_s": 0}
-        )
-        sqlmap_result: Dict[str, Any] = (
-            results[1] if isinstance(results[1], dict)
-            else {"success": False, "error": str(results[1])}
-        )
-
-        # Merge SQLMap findings into pipeline findings
-        if sqlmap_result.get("success"):
-            raw_stdout = sqlmap_result.get("stdout", "")
-            raw_dir    = sqlmap_result.get("output_dir", "")
-            sql_finds  = _analyzer.merge(
-                _analyzer.analyze(raw_stdout, url),
-                _analyzer.analyze_from_dir(raw_dir, url),
-            )
-            db_type = _analyzer.detect_database_type(raw_stdout)
-            if db_type and not pipeline_result.get("database_type"):
-                pipeline_result["database_type"] = db_type
-
-            # Merge without duplicates
-            existing_names = {f.get("name", f.get("type")) for f in pipeline_result["findings"]}
-            for sf in sql_finds:
-                key = sf.get("name") or sf.get("type")
-                if key not in existing_names:
-                    pipeline_result["findings"].append(sf)
-                    existing_names.add(key)
-        else:
-            if sqlmap_result.get("error"):
-                logger.warning(f"[{scan_id}] SQLMap error: {sqlmap_result['error']}")
-
-        end = datetime.now()
-        _upd(progress="Génération du rapport…", progress_pct=92)
-
-        report = _reporter.generate(
-            scan_id=scan_id,
-            url=url,
-            pipeline_result=pipeline_result,
+        _upd(
             status="completed",
-            start_time=start,
-            end_time=end,
-            scan_config=config,
-            scan_type="deep_scan",
+            report=report,
+            progress="Terminé",
+            progress_pct=100,
+            csv_files=[{"filename": Path(p).name,
+                        "size_kb": round(Path(p).stat().st_size / 1024, 1),
+                        "type": "summary" if "summary" in Path(p).name
+                                else "findings" if "findings" in Path(p).name else "data"}
+                       for p in pipeline.get("csv_files", []) if Path(p).exists()],
+            sqli_confirmed=pipeline.get("sqli_confirmed", False),
         )
-
-        _upd(status="completed", report=report, progress="Terminé", progress_pct=100)
         logger.info(
-            f"[{scan_id}] Deep Scan completed — "
-            f"{len(pipeline_result['findings'])} finding(s)"
+            f"[{scan_id}] Done — {len(pipeline['findings'])} findings "
+            f"score={pipeline['risk_score']} sqli={pipeline['sqli_confirmed']}"
         )
 
     except Exception as exc:
         end = datetime.now()
-        logger.error(f"[{scan_id}] Fatal error: {exc}", exc_info=True)
+        logger.error(f"[{scan_id}] Fatal: {exc}", exc_info=True)
         _upd(status="failed", error=str(exc), progress_pct=0)
         _reporter.generate_error(
             scan_id=scan_id, url=url, error=str(exc),
@@ -203,54 +132,84 @@ async def _run_deep_scan(scan_id: str, url: str, config: Dict[str, Any]) -> None
 
 @app.get("/api/health")
 async def health():
-    import shutil as _shutil
+    import shutil as _sh
     return {
         "status":           "ok",
-        "sqlmap_available": _shutil.which("sqlmap") is not None,
-        "active_scans":     len([s for s in _scans.values() if s["status"] == "running"]),
+        "sqlmap_available": _sh.which("sqlmap") is not None,
+        "active_scans":     sum(1 for s in _scans.values() if s["status"] == "running"),
         "version":          "5.0.0",
     }
 
 
-@app.get("/api/config/defaults")
-async def get_default_config():
-    return SCAN_DEFAULT_CONFIG
-
-
 @app.post("/api/scan/start", status_code=202)
 async def start_scan(req: ScanRequest, bg: BackgroundTasks):
-    ok_urls, url_errors = validate_urls(req.urls)
-    if not ok_urls:
-        raise HTTPException(status_code=422, detail={"validation_errors": url_errors})
+    """Lance un scan pour chaque URL fournie."""
+    valid_urls = []
+    for url in req.urls:
+        ok, reason = validate_url(url)
+        if ok:
+            valid_urls.append(url)
+        else:
+            logger.warning(f"URL ignorée — {url}: {reason}")
 
-    cfg = dict(req.scan_config or {})
-    if cfg:
-        ok_cfg, cfg_errors = validate_scan_config(cfg)
-        if not ok_cfg:
-            raise HTTPException(status_code=422, detail={"config_errors": cfg_errors})
+    if not valid_urls:
+        raise HTTPException(status_code=422, detail="Aucune URL valide")
 
-    scan_type = req.scan_type if req.scan_type in ("full_scan", "deep_scan") else "full_scan"
-    task_fn   = _run_deep_scan if scan_type == "deep_scan" else _run_full_scan
-
+    cfg = req.config or {}
     ids = []
-    for url in ok_urls:
+    for url in valid_urls:
         sid = uuid.uuid4().hex[:10]
         _scans[sid] = {
             "scan_id":      sid,
             "url":          url,
-            "scan_type":    scan_type,
             "status":       "pending",
-            "progress":     "En file d'attente",
+            "progress":     "En attente",
             "progress_pct": 0,
             "started_at":   datetime.now().isoformat(),
             "report":       None,
+            "csv_files":    [],
+            "sqli_confirmed": False,
             "error":        None,
         }
-        bg.add_task(task_fn, sid, url, cfg)
+        bg.add_task(_run_scan, sid, url, cfg)
         ids.append(sid)
-        logger.info(f"Queued {scan_type} {sid} → {url}")
 
-    return {"scan_ids": ids, "queued": len(ids), "scan_type": scan_type}
+    logger.info(f"Lancé {len(ids)} scan(s)")
+    return {"scan_ids": ids, "queued": len(ids)}
+
+
+@app.post("/api/targets/upload", status_code=202)
+async def upload_targets(file: UploadFile, bg: BackgroundTasks):
+    """Upload targets.txt et lance un scan par URL valide."""
+    raw = (await file.read()).decode("utf-8", errors="replace")
+    urls = _parse_targets(raw)
+
+    if not urls:
+        raise HTTPException(status_code=422, detail="Aucune URL valide dans le fichier")
+
+    # Sauvegarder pour référence
+    TARGETS_FILE.write_text(raw, encoding="utf-8")
+
+    ids = []
+    for url in urls:
+        sid = uuid.uuid4().hex[:10]
+        _scans[sid] = {
+            "scan_id":      sid,
+            "url":          url,
+            "status":       "pending",
+            "progress":     "En attente",
+            "progress_pct": 0,
+            "started_at":   datetime.now().isoformat(),
+            "report":       None,
+            "csv_files":    [],
+            "sqli_confirmed": False,
+            "error":        None,
+        }
+        bg.add_task(_run_scan, sid, url, {})
+        ids.append(sid)
+
+    logger.info(f"targets.txt → {len(ids)} cibles")
+    return {"scan_ids": ids, "queued": len(ids), "urls": urls}
 
 
 @app.get("/api/scan/{scan_id}/status")
@@ -259,27 +218,29 @@ async def scan_status(scan_id: str):
         s   = _scans[scan_id]
         rep = s.get("report") or {}
         return {
-            "scan_id":      scan_id,
-            "status":       s["status"],
-            "scan_type":    s.get("scan_type", "full_scan"),
-            "progress":     s.get("progress"),
-            "progress_pct": s.get("progress_pct", 0),
-            "url":          s["url"],
-            "error":        s.get("error"),
-            "summary":      rep.get("summary") if rep else None,
+            "scan_id":        scan_id,
+            "status":         s["status"],
+            "progress":       s.get("progress"),
+            "progress_pct":   s.get("progress_pct", 0),
+            "url":            s["url"],
+            "error":          s.get("error"),
+            "sqli_confirmed": s.get("sqli_confirmed", False),
+            "csv_files":      s.get("csv_files", []),
+            "summary":        rep.get("summary") if rep else None,
         }
 
     report = _reporter.load(scan_id)
     if report:
         return {
-            "scan_id":      scan_id,
-            "status":       report["status"],
-            "scan_type":    report.get("scan_type", "full_scan"),
-            "progress":     "Terminé",
-            "progress_pct": 100,
-            "url":          report["target"],
-            "error":        report.get("error"),
-            "summary":      report.get("summary"),
+            "scan_id":        scan_id,
+            "status":         report["status"],
+            "progress":       "Terminé",
+            "progress_pct":   100,
+            "url":            report["target"],
+            "error":          report.get("error"),
+            "sqli_confirmed": report.get("scan_summary", {}).get("sqli_confirmed", False),
+            "csv_files":      list_csv_files(scan_id),
+            "summary":        report.get("summary"),
         }
 
     raise HTTPException(status_code=404, detail="Scan introuvable")
@@ -289,12 +250,33 @@ async def scan_status(scan_id: str):
 async def get_report(scan_id: str):
     if scan_id in _scans and _scans[scan_id].get("report"):
         return _scans[scan_id]["report"]
-
     report = _reporter.load(scan_id)
     if report:
         return report
-
     raise HTTPException(status_code=404, detail="Rapport introuvable")
+
+
+@app.get("/api/scan/{scan_id}/csv")
+async def list_scan_csvs(scan_id: str):
+    """Liste les CSV disponibles pour un scan."""
+    return {"scan_id": scan_id, "files": list_csv_files(scan_id)}
+
+
+@app.get("/api/scan/{scan_id}/csv/{filename}")
+async def download_csv(scan_id: str, filename: str):
+    """Télécharge un fichier CSV produit par le scan."""
+    # Validation stricte du nom de fichier
+    if "/" in filename or "\\" in filename or ".." in filename:
+        raise HTTPException(status_code=400, detail="Nom de fichier invalide")
+    path = REPORTS_CSV_DIR / scan_id / filename
+    if not path.exists() or not path.suffix == ".csv":
+        raise HTTPException(status_code=404, detail="Fichier CSV introuvable")
+    return FileResponse(
+        str(path),
+        media_type="text/csv",
+        filename=filename,
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.get("/api/reports")
@@ -304,7 +286,7 @@ async def list_reports():
 
 @app.delete("/api/scan/{scan_id}")
 async def delete_scan(scan_id: str):
-    removed_mem  = scan_id in _scans
+    removed_mem = scan_id in _scans
     if removed_mem:
         del _scans[scan_id]
     removed_file = _reporter.delete(scan_id)
@@ -313,17 +295,17 @@ async def delete_scan(scan_id: str):
     return {"deleted": scan_id}
 
 
-# ── Serve frontend ─────────────────────────────────────────────
-_static_dir = FRONTEND_DIR / "static"
-if _static_dir.exists():
-    app.mount("/static", StaticFiles(directory=str(_static_dir)), name="static")
+# ── Frontend ───────────────────────────────────────────────────
+_static = FRONTEND_DIR / "static"
+if _static.exists():
+    app.mount("/static", StaticFiles(directory=str(_static)), name="static")
 
 
 @app.get("/", include_in_schema=False)
 async def serve_index():
-    index = FRONTEND_DIR / "index.html"
-    if index.exists():
-        return FileResponse(str(index))
+    idx = FRONTEND_DIR / "index.html"
+    if idx.exists():
+        return FileResponse(str(idx))
     return JSONResponse({"error": "Frontend introuvable"}, status_code=404)
 
 
@@ -331,7 +313,7 @@ async def serve_index():
 async def catch_all(full_path: str):
     if full_path.startswith("api/"):
         raise HTTPException(status_code=404)
-    index = FRONTEND_DIR / "index.html"
-    if index.exists():
-        return FileResponse(str(index))
+    idx = FRONTEND_DIR / "index.html"
+    if idx.exists():
+        return FileResponse(str(idx))
     raise HTTPException(status_code=404)
