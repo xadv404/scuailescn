@@ -20,7 +20,7 @@
         <line x1="12" y1="11" x2="12" y2="11.01" stroke-width="3" stroke-linecap="round"/>
       </svg>
       <span class="brand-name">SQL Audit Scanner</span>
-      <span class="brand-badge">v2.0</span>
+      <span class="brand-badge">v5.0</span>
     </div>
     <div class="header-meta">
       <span id="sqlmap-pill" class="pill pill--checking">
@@ -185,6 +185,29 @@
 
       </div><!-- .config-grid -->
     </div><!-- .config-panel -->
+
+    <!-- Scan type selector -->
+    <div class="scan-type-row">
+      <div class="field-label" style="margin-bottom:10px">Mode de scan</div>
+      <div class="scan-type-grid">
+        <label class="scan-type-card scan-type-card--active" id="card-full" for="scan-type-full">
+          <input type="radio" name="scan_type" id="scan-type-full" value="full_scan" checked hidden />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="22"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <div>
+            <div class="scan-type-title">Full Scan</div>
+            <div class="scan-type-desc">8 modules passifs en parallèle — détection, risques, rapport complet. Aucune interaction requise.</div>
+          </div>
+        </label>
+        <label class="scan-type-card" id="card-deep" for="scan-type-deep">
+          <input type="radio" name="scan_type" id="scan-type-deep" value="deep_scan" hidden />
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" width="22"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+          <div>
+            <div class="scan-type-title">Deep Scan</div>
+            <div class="scan-type-desc">Full Scan + SQLMap — analyse approfondie des injections SQL, structure DB (sans extraction de données).</div>
+          </div>
+        </label>
+      </div>
+    </div>
 
     <!-- Actions -->
     <div class="form-actions">

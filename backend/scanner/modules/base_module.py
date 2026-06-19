@@ -6,16 +6,14 @@ from typing import Any, Dict, List, Optional
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
-from backend.scanner.core.http_client import AuditHttpClient
+from backend.core.http_client import AuditHttpClient
 from backend.utils.logger import setup_logger
 from config import LOGS_DIR
 
 
 class BaseModule(ABC):
-    """Every passive module inherits this class."""
-
     NAME:     str = "base"
-    CATEGORY: str = "Général"
+    CATEGORY: str = "General"
 
     def __init__(self, client: AuditHttpClient) -> None:
         self._client = client
@@ -23,12 +21,12 @@ class BaseModule(ABC):
 
     @abstractmethod
     async def scan(self, url: str) -> List[Dict[str, Any]]:
-        """Run the module against *url* and return a (possibly empty) findings list."""
+        """Run module against *url*. Return list of findings (may be empty)."""
 
     def _finding(
         self,
         *,
-        type: str,
+        name: str,
         severity: str,
         confidence: str,
         description: str,
@@ -39,13 +37,30 @@ class BaseModule(ABC):
         location: Optional[str] = None,
     ) -> Dict[str, Any]:
         return {
-            "type":           type,
+            "name":           name,
             "category":       self.CATEGORY,
             "severity":       severity,
             "confidence":     confidence,
             "location":       location or url,
             "description":    description,
-            "evidence":       evidence[:600] if evidence else "",
+            "evidence":       evidence[:800] if evidence else "",
             "impact":         impact,
             "recommendation": recommendation,
         }
+
+    @staticmethod
+    def _base_url(url: str) -> str:
+        from urllib.parse import urlparse
+        p = urlparse(url)
+        return f"{p.scheme}://{p.netloc}"
+
+    @staticmethod
+    def _dedup(findings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        seen: set = set()
+        out = []
+        for f in findings:
+            key = (f.get("name", ""), f.get("location", "")[:80])
+            if key not in seen:
+                seen.add(key)
+                out.append(f)
+        return out

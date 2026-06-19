@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   SQL Audit Scanner v3 – Frontend Application
+   SQL Audit Scanner v5 – Frontend Application
 ══════════════════════════════════════════════════════════════ */
 'use strict';
 
@@ -338,6 +338,20 @@ async function removeScan(scan_id) {
   }
 }
 
+/* ── Scan type ─────────────────────────────────────────────────── */
+function getScanType() {
+  return document.querySelector('input[name="scan_type"]:checked')?.value || 'full_scan';
+}
+
+function initScanTypeCards() {
+  document.querySelectorAll('input[name="scan_type"]').forEach(radio => {
+    radio.addEventListener('change', () => {
+      document.querySelectorAll('.scan-type-card').forEach(c => c.classList.remove('scan-type-card--active'));
+      radio.closest('.scan-type-card')?.classList.add('scan-type-card--active');
+    });
+  });
+}
+
 /* ── Start scan ─────────────────────────────────────────────────── */
 async function startScan() {
   clearUrlErrors();
@@ -368,11 +382,13 @@ async function startScan() {
 
   try {
     const scan_config = getScanConfig();
+    const scan_type   = getScanType();
     const result = await apiFetch('/api/scan/start', {
       method: 'POST',
-      body: JSON.stringify({ urls, scan_config }),
+      body: JSON.stringify({ urls, scan_type, scan_config }),
     });
-    toast(`${result.queued} scan(s) lancé(s)`, 'success');
+    const modeLabel = scan_type === 'deep_scan' ? 'Deep Scan' : 'Full Scan';
+    toast(`${result.queued} scan(s) lancé(s) — mode ${modeLabel}`, 'success');
     result.scan_ids.forEach(id => startPolling(id));
   } catch (err) {
     toast('Erreur : ' + err.message, 'error');
@@ -456,6 +472,8 @@ function renderReport(r) {
   const riskScore  = ss.risk_score ?? null;
   const categories = ss.categories || {};
   const techs      = ss.technologies || [];
+  const phases     = ss.phases || [];
+  const scanType   = r.scan_type || 'full_scan';
 
   return `
   <!-- ── Dashboard stats ────────────────────────────────────── -->
@@ -493,9 +511,28 @@ function renderReport(r) {
     <div class="meta-block"><div class="label">Cible</div><div class="value value--mono">${escHtml(truncate(r.target||'—',48))}</div></div>
     <div class="meta-block"><div class="label">Scan ID</div><div class="value value--mono">${escHtml(r.scan_id||'—')}</div></div>
     <div class="meta-block"><div class="label">Statut</div><div class="value"><span class="badge badge--status-${r.status}">${escHtml(r.status)}</span></div></div>
+    <div class="meta-block"><div class="label">Mode</div><div class="value"><span class="badge badge--mode">${scanType === 'deep_scan' ? 'Deep Scan' : 'Full Scan'}</span></div></div>
     <div class="meta-block"><div class="label">Date début</div><div class="value" style="font-size:12px">${fmtDate(r.date)}</div></div>
     <div class="meta-block"><div class="label">Date fin</div><div class="value" style="font-size:12px">${fmtDate(r.end_date)}</div></div>
   </div>
+
+  <!-- ── Pipeline phases ────────────────────────────────────── -->
+  ${phases.length ? `
+  <div class="section-title">Phases d'exécution</div>
+  <div class="phases-grid">
+    ${phases.map((p, i) => `
+    <div class="phase-card">
+      <div class="phase-num">${i + 1}</div>
+      <div class="phase-info">
+        <div class="phase-name">${escHtml(p.name)}</div>
+        <div class="phase-modules">${(p.modules||[]).map(m => `<code>${escHtml(m)}</code>`).join(' ')}</div>
+      </div>
+      <div class="phase-stats">
+        <span class="phase-findings">${p.findings} résultat${p.findings!==1?'s':''}</span>
+        <span class="phase-dur">${p.duration_s}s</span>
+      </div>
+    </div>`).join('')}
+  </div>` : ''}
 
   <!-- ── Technologies detected ─────────────────────────────── -->
   ${techs.length ? `
@@ -678,6 +715,7 @@ document.addEventListener('DOMContentLoaded', () => {
   $('#btn-export').addEventListener('click', exportReport);
 
   initConfigPanel();
+  initScanTypeCards();
   loadDefaultConfig();
 
   $('#btn-close-modal').addEventListener('click', () => {

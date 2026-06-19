@@ -522,8 +522,139 @@ body {
 .cat-sev--low      { background: rgba(88,166,255,.15); color: var(--sev-low); }
 .cat-sev--info     { background: rgba(139,148,158,.12);color: var(--sev-info); }
 
+/* ── Scan type cards ────────────────────────────────────────── */
+.scan-type-row { margin-bottom: 20px; }
+
+.scan-type-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.scan-type-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  background: var(--bg-input);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+
+.scan-type-card:hover {
+  border-color: var(--accent);
+}
+
+.scan-type-card--active {
+  border-color: var(--accent);
+  background: rgba(33,136,255,.07);
+}
+
+.scan-type-card svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--accent);
+}
+
+.scan-type-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.scan-type-desc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* ── Badge mode ─────────────────────────────────────────────── */
+.badge--mode {
+  background: rgba(33,136,255,.15);
+  color: #58a6ff;
+  border: 1px solid rgba(33,136,255,.3);
+}
+
+/* ── Pipeline phases ─────────────────────────────────────────── */
+.phases-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+}
+
+.phase-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+
+.phase-num {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: rgba(33,136,255,.2);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.phase-info { flex: 1; min-width: 0; }
+
+.phase-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 3px;
+}
+
+.phase-modules {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.phase-modules code {
+  background: rgba(139,148,158,.1);
+  padding: 1px 5px;
+  border-radius: 3px;
+  margin-right: 3px;
+  font-family: var(--font-mono);
+}
+
+.phase-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.phase-findings {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.phase-dur {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 700px) {
+  .scan-type-grid { grid-template-columns: 1fr; }
   .config-grid { grid-template-columns: 1fr; }
   .report-meta-grid { grid-template-columns: 1fr 1fr; }
   .modal { max-height: 95vh; }
