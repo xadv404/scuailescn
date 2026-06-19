@@ -1,0 +1,287 @@
+# ══════════════════════════════════════════════════════════════
+# DORKS — Pentest Audit Scanner
+# Usage : IP suisse sur Google — résultats naturellement filtrés CH
+# ══════════════════════════════════════════════════════════════
+
+
+# ── PARAMÈTRES GET — Candidats SQLi ───────────────────────────
+
+inurl:"?id=" inurl:".php" -youtube -facebook -google -wikipedia -github
+inurl:"?cat=" inurl:".php" -youtube -facebook -google -wikipedia
+inurl:"?page=" inurl:".php" -youtube -facebook -google -wikipedia
+inurl:"?article=" inurl:".php" -youtube -facebook -google
+inurl:"?product=" inurl:".php" -youtube -facebook -google
+inurl:"?item=" inurl:".php" -youtube -facebook -google
+inurl:"?news=" inurl:".php" -youtube -facebook -google
+inurl:"?ref=" inurl:".php" -youtube -facebook -google
+inurl:"?user=" inurl:".php" -youtube -facebook -google -github
+inurl:"?action=" inurl:".php" -youtube -facebook -google
+inurl:"index.php?id="
+inurl:"view.php?id="
+inurl:"detail.php?id="
+inurl:"produit.php?id="
+inurl:"article.php?id="
+inurl:"news.php?id="
+inurl:"page.php?id="
+inurl:"show.php?id="
+inurl:"fiche.php?id="
+inurl:"afficher.php?id="
+
+
+# ── FORMULAIRES DE RECHERCHE — Candidats XSS/SQLi ─────────────
+
+inurl:"?search=" inurl:".php" -google -youtube -facebook -wikipedia
+inurl:"?q=" inurl:".php" -google -youtube -facebook -amazon
+inurl:"?query=" inurl:".php" -google -youtube -facebook
+inurl:"?keyword=" inurl:".php" -google -youtube -facebook
+inurl:"recherche.php" -google -youtube -facebook
+inurl:"search.php" -google -youtube -facebook -github
+intitle:"résultats de recherche" inurl:".php" -google -youtube
+intitle:"Suchergebnisse" inurl:".php" -google -youtube
+
+
+# ── FORMULAIRES DE CONNEXION — Auth testing ────────────────────
+
+inurl:"login.php" -facebook -google -admin -exemple -demo
+inurl:"connexion.php" -facebook -google -exemple -demo
+inurl:"/espace-client" inurl:".php" -facebook -google -exemple
+inurl:"/mon-compte" inurl:".php" -facebook -google -exemple
+inurl:"/membre" inurl:".php" -facebook -google -exemple
+inurl:"signin.php" -facebook -google -exemple
+inurl:"authenticate.php" -facebook -google
+inurl:"/login" inurl:".php" -facebook -google -exemple -github
+inurl:"/connexion" inurl:".php" -facebook -google -exemple
+intitle:"connexion" inurl:".php" -facebook -google -admin
+intitle:"Anmeldung" inurl:".php" -facebook -google -admin
+
+
+# ── PANNEAUX ADMIN EXPOSÉS — Access control ────────────────────
+
+inurl:"/phpmyadmin" -demo -exemple -localhost
+inurl:"/adminer" -demo -exemple -localhost
+inurl:"/adminer.php" -demo -exemple
+inurl:"/pma/" -demo -exemple
+inurl:"/dbadmin/" -demo -exemple
+inurl:"/wp-admin" -demo -exemple -wordpress.com
+inurl:"/administrator" -demo -exemple -joomla.org
+inurl:"/admin" inurl:".php" -facebook -google -exemple -admin.ch -ch.ch
+inurl:"/backend" inurl:".php" -exemple -demo
+inurl:"/panel" inurl:".php" -exemple -demo
+inurl:"/dashboard" inurl:".php" -exemple -demo -facebook
+
+
+# ── FICHIERS SENSIBLES EXPOSÉS — File security ─────────────────
+
+intitle:"index of" ".sql"
+intitle:"index of" ".env"
+intitle:"index of" ".bak"
+intitle:"index of" "config.php"
+intitle:"index of" "wp-config.php"
+intitle:"index of" "database"
+intitle:"index of" "backup"
+inurl:"phpinfo.php" -exemple -github -stackoverflow
+inurl:"info.php" "PHP Version" -exemple -github -stackoverflow
+intitle:"PHP Version" "Server API" -exemple -github
+inurl:"/.git" -github -gitlab -bitbucket
+inurl:".env" "DB_PASSWORD" -github -stackoverflow
+inurl:"config.php.bak" -github -exemple
+inurl:"dump.sql" -github -exemple
+
+
+# ── ERREURS DB EXPOSÉES — Database security ────────────────────
+
+"You have an error in your SQL syntax" -stackoverflow -github -w3schools
+"mysql_fetch_array()" -stackoverflow -github -w3schools
+"Warning: mysql_" -stackoverflow -github -w3schools
+"mysqli_fetch" "Warning" -stackoverflow -github
+"ORA-01756" -stackoverflow -github -oracle.com
+"pg_query()" "Warning" -stackoverflow -github
+"SQLite3::query" "Warning" -stackoverflow -github
+"ODBC SQL Server Driver" -stackoverflow -github -microsoft.com
+"supplied argument is not a valid MySQL" -stackoverflow -github
+"Uncaught PDOException" -stackoverflow -github
+
+
+# ── ENDPOINTS API — API security ──────────────────────────────
+
+inurl:"/api/v1/" -facebook -google -github -swagger.io
+inurl:"/api/v2/" -facebook -google -github
+inurl:"/rest/api/" -facebook -google -github
+inurl:"/swagger" -github -demo -swagger.io
+inurl:"/swagger-ui" -github -demo
+inurl:"/graphql" -facebook -github -demo -graphql.org
+inurl:"/api/" "application/json" -facebook -google -github
+
+
+# ── UPLOAD DE FICHIERS — File security ────────────────────────
+
+inurl:"upload.php" -github -exemple -demo
+inurl:"uploader.php" -github -exemple
+inurl:"file_upload.php" -github -exemple
+inurl:"upload" inurl:".php" ("fichier" OR "télécharger" OR "joindre") -github -exemple
+intitle:"upload" inurl:".php" -github -stackoverflow -exemple
+
+
+# ── WORDPRESS ─────────────────────────────────────────────────
+
+inurl:"wp-login.php" -wordpress.com -exemple -demo
+inurl:"/wp-json/wp/v2/users" -wordpress.com -github
+inurl:"/wp-content/uploads/" intitle:"index of" -wordpress.com
+inurl:"?author=" inurl:".php" -wordpress.com -facebook
+inurl:"/wp-json/" -wordpress.com -github -demo
+
+
+# ── JOOMLA / CMS GÉNÉRIQUES ───────────────────────────────────
+
+inurl:"index.php?option=com_" -joomla.org -demo
+inurl:"?view=" inurl:"?layout=" inurl:".php" -joomla.org -demo
+inurl:"?module=" inurl:"?func=" -exemple -demo
+inurl:"index.php?option=com_user" -joomla.org
+
+
+# ══════════════════════════════════════════════════════════════
+# DORKS NICHES — Secteurs suisses
+# ══════════════════════════════════════════════════════════════
+
+
+# ── ARTISANS & SERVICES ────────────────────────────────────────
+
+("plombier" OR "électricien" OR "chauffagiste" OR "sanitaire") ("devis" OR "formulaire" OR "demande") -exemple -test -admin
+("menuisier" OR "charpentier" OR "peintre" OR "carreleur") ("devis gratuit" OR "formulaire") -exemple
+("déménagement" OR "déménageur") ("devis" OR "réservation" OR "formulaire") -exemple -test
+("jardinier" OR "paysagiste" OR "entretien jardin") ("devis" OR "formulaire") -exemple
+("nettoyage" OR "conciergerie" OR "femme de ménage") ("devis" OR "offre" OR "formulaire") -exemple
+("sécurité" OR "alarme" OR "vidéosurveillance") ("devis" OR "installation" OR "formulaire") -exemple
+("rénovation" OR "travaux" OR "artisan") ("devis" OR "formulaire") -exemple -test
+
+
+# ── SANTÉ & BIEN-ÊTRE ─────────────────────────────────────────
+
+("vétérinaire" OR "clinique vétérinaire") ("rendez-vous" OR "consultation" OR "formulaire") -exemple
+("physiothérapeute" OR "kinésithérapeute") ("rendez-vous" OR "inscription" OR "formulaire") -exemple
+("ostéopathe" OR "chiropracteur" OR "acupuncteur") ("rendez-vous" OR "formulaire") -exemple
+("psychologue" OR "thérapeute" OR "coaching") ("rendez-vous" OR "formulaire") -exemple
+("spa" OR "massage" OR "esthétique" OR "bien-être") ("réservation" OR "rendez-vous") -exemple
+("pharmacie" OR "parapharmacie") ("commande" OR "livraison") -exemple
+
+
+# ── JURIDIQUE & FINANCE ────────────────────────────────────────
+
+("avocat" OR "étude d'avocat" OR "notaire") ("contact" OR "formulaire" OR "demande") -exemple
+("fiduciaire" OR "comptable" OR "expert-comptable") ("formulaire" OR "demande") -exemple
+("conseiller financier" OR "gestion de patrimoine") ("rendez-vous" OR "formulaire") -exemple
+
+
+# ── ALIMENTATION & AGRICULTURE ────────────────────────────────
+
+("fromagerie" OR "fromage AOP" OR "charcuterie artisanale") ("commande" OR "abonnement" OR "livraison") -exemple
+("vignoble" OR "vigneron" OR "cave") ("commande" OR "abonnement" OR "dégustation") -exemple
+("boulangerie" OR "pâtisserie" OR "confiserie") ("commande" OR "abonnement") -exemple
+("traiteur" OR "catering" OR "buffet") ("devis" OR "commande" OR "réservation") -exemple
+("épicerie" OR "produits locaux" OR "circuit court") ("commande" OR "abonnement" OR "livraison") -exemple
+
+
+# ── HÔTELLERIE & TOURISME ─────────────────────────────────────
+
+("hôtel" OR "pension" OR "auberge" OR "bed and breakfast") ("réservation" OR "formulaire") -booking -airbnb -tripadvisor -exemple
+("gîte" OR "chalet" OR "appartement de vacances") ("réservation" OR "disponibilité") -airbnb -booking -exemple
+("agence de voyage" OR "voyage organisé") ("devis" OR "réservation" OR "inscription") -exemple
+
+
+# ── SPORT & LOISIRS ───────────────────────────────────────────
+
+("club de golf" OR "golf") ("inscription" OR "abonnement" OR "réservation") -exemple
+("club de tennis" OR "padel" OR "squash") ("inscription" OR "abonnement") -exemple
+("yoga" OR "pilates" OR "méditation") ("inscription" OR "cours" OR "abonnement") -exemple
+("escalade" OR "via ferrata" OR "randonnée guidée") ("inscription" OR "réservation") -exemple
+("moniteur de ski" OR "école de ski") ("inscription" OR "réservation" OR "cours") -exemple
+("voile" OR "navigation" OR "club nautique") ("inscription" OR "cours" OR "abonnement") -exemple
+
+
+# ── ÉDUCATION & FORMATION ─────────────────────────────────────
+
+("auto-école" OR "cours de conduite") ("inscription" OR "formulaire") -exemple
+("cours de langue" OR "école de langue") ("inscription" OR "formulaire" OR "cours") -exemple
+("école de musique" OR "cours de musique") ("inscription" OR "formulaire") -exemple
+("cours particuliers" OR "soutien scolaire" OR "tutorat") ("inscription" OR "formulaire") -exemple
+
+
+# ── MODE & BEAUTÉ ─────────────────────────────────────────────
+
+("salon de coiffure" OR "coiffeur") ("réservation" OR "rendez-vous" OR "formulaire") -exemple
+("tatouage" OR "piercing" OR "studio") ("réservation" OR "rendez-vous") -exemple
+("créateur" OR "styliste" OR "couturier") ("commande" OR "sur mesure" OR "formulaire") -exemple
+
+
+# ── AUTOMOBILE ────────────────────────────────────────────────
+
+("garage" OR "garagiste" OR "carrosserie") ("devis" OR "rendez-vous" OR "formulaire") -exemple
+("location de voiture" OR "leasing auto") ("réservation" OR "offre" OR "formulaire") -exemple
+
+
+# ── SERVICES AUX ENTREPRISES ──────────────────────────────────
+
+("imprimerie" OR "impression" OR "signalétique") ("devis" OR "commande" OR "formulaire") -exemple
+("traduction" OR "traducteur" OR "interprète") ("devis" OR "formulaire") -exemple
+("photographe" OR "vidéaste" OR "production vidéo") ("devis" OR "réservation") -exemple
+("architecte" OR "bureau d'architecture") ("devis" OR "formulaire") -exemple
+
+
+# ── DEUTSCH ───────────────────────────────────────────────────
+
+("Zahnarzt" OR "Zahnarztpraxis") ("Anmeldung" OR "Termin" OR "Formular") -Beispiel -test
+("Arzt" OR "Ärztehaus" OR "Praxis") ("Anmeldung" OR "Termin") -Beispiel
+("Versicherung" OR "Krankenkasse") ("Offerte" OR "Anmeldung" OR "Formular") -Beispiel
+("Fitness" OR "Sportzentrum" OR "Sportclub") ("Anmeldung" OR "Abo" OR "Mitgliedschaft") -Beispiel
+("Garage" OR "Autowerkstatt" OR "Carrosserie") ("Offerte" OR "Termin" OR "Anfrage") -Beispiel
+("Coiffeur" OR "Friseur" OR "Hairstudio") ("Termin" OR "Reservation" OR "Anmeldung") -Beispiel
+("Umzug" OR "Umzugsfirma") ("Offerte" OR "Anfrage" OR "Formular") -Beispiel
+("Hotel" OR "Pension" OR "Gasthaus") ("Reservation" OR "Buchung" OR "Anfrage") -booking -airbnb
+("Tierarzt" OR "Tierarztpraxis") ("Termin" OR "Anmeldung" OR "Formular") -Beispiel
+("Physiotherapie" OR "Physiotherapeut") ("Termin" OR "Anmeldung") -Beispiel
+("Bäckerei" OR "Konditorei") ("Bestellung" OR "Abonnement") -Beispiel
+("Reinigung" OR "Haushaltsreinigung") ("Offerte" OR "Anfrage") -Beispiel
+("Fahrschule" OR "Fahrstunden") ("Anmeldung" OR "Formular") -Beispiel
+("Sprachkurs" OR "Sprachschule") ("Anmeldung" OR "Kurs") -Beispiel
+("Gärtnerei" OR "Gartenunterhalt") ("Offerte" OR "Anfrage") -Beispiel
+("Maler" OR "Malergeschäft") ("Offerte" OR "Anfrage") -Beispiel
+("Sanitär" OR "Heizung" OR "Lüftung") ("Offerte" OR "Anfrage") -Beispiel
+("Rechtsanwalt" OR "Anwaltskanzlei" OR "Notar") ("Kontakt" OR "Formular" OR "Anfrage") -Beispiel
+
+
+# ── ITALIANO ──────────────────────────────────────────────────
+
+("dentista" OR "studio dentistico") ("appuntamento" OR "modulo" OR "prenotazione") -esempio
+("assicurazione" OR "assicurazione malattia") ("preventivo" OR "iscrizione") -esempio
+("palestra" OR "fitness" OR "centro sportivo") ("iscrizione" OR "abbonamento") -esempio
+("hotel" OR "pensione" OR "albergo") ("prenotazione" OR "richiesta") -booking -airbnb
+("parrucchiere" OR "salone di bellezza") ("appuntamento" OR "prenotazione") -esempio
+("ristorante" OR "trattoria" OR "osteria") ("prenotazione" OR "modulo") -esempio
+("trasloco" OR "ditta di traslochi") ("preventivo" OR "richiesta") -esempio
+("gioielleria" OR "orologeria" OR "ottico") ("preventivo" OR "modulo" OR "ordine") -esempio
+("avvocato" OR "studio legale" OR "notaio") ("contatto" OR "modulo") -esempio
+("falegname" OR "carpentiere" OR "idraulico") ("preventivo" OR "richiesta") -esempio
+
+
+# ── PATTERNS INTITLE / INURL ──────────────────────────────────
+
+intitle:"formulaire de contact" -admin -exemple -test -facebook -linkedin -wikipedia
+intitle:"demande de devis" -admin -exemple -test -facebook
+intitle:"prise de rendez-vous" -admin -exemple -test -facebook -linkedin
+intitle:"réservation en ligne" -admin -exemple -booking -airbnb -facebook
+intitle:"formulaire d'inscription" -admin -exemple -test -facebook -linkedin
+intitle:"commander en ligne" -admin -exemple -amazon -galaxus -digitec
+intitle:"Angebot anfordern" -admin -Beispiel -facebook
+intitle:"Termin buchen" -admin -Beispiel -facebook -doctolib
+intitle:"Anmeldung" inurl:formular -admin -Beispiel
+intitle:"prenota online" -admin -esempio -booking
+inurl:"/devis" -facebook -linkedin -admin -exemple -test
+inurl:"/inscription" -facebook -linkedin -admin -exemple -test
+inurl:"/reservation" -facebook -linkedin -admin -booking -airbnb
+inurl:"contact.php" -facebook -linkedin -admin -wikipedia
+inurl:"formulaire.php" -facebook -linkedin -admin
+inurl:"devis.php" -facebook -linkedin -admin
+inurl:"kontakt.php" -admin -Beispiel -facebook
+inurl:"contatto.php" -admin -esempio -facebook
+inurl:"/rendez-vous" -facebook -linkedin -admin -doctolib
+inurl:"?page=contact" -facebook -linkedin -admin
