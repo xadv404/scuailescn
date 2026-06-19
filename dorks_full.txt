@@ -1,15 +1,36 @@
+"Column count doesn't match" -github -stackoverflow
+"DB_HOST" "DB_PASSWORD" filetype:env -github
+"DisallowedHost" "Django" -github -stackoverflow
+"Fatal error:" "on line" -github -stackoverflow -php.net
+"Laravel" inurl:"login" -laravel.com -github -exemple
 "ODBC SQL Server Driver" -stackoverflow -github
 "ORA-01756" -stackoverflow -github -oracle.com
+"OperationalError" "no such table" -github -stackoverflow
+"Powered by CakePHP" -cakephp.org -github
 "SQLite3::query" "Warning" -stackoverflow -github
+"Smarty" ("formulaire" OR "devis" OR "contact") inurl:".php" -github -smarty.net
+"Symfony" inurl:"login" -symfony.com -github -exemple
 "Uncaught PDOException" -stackoverflow -github
+"Unknown column" "in 'field list'" -github -stackoverflow
+"Warning: include(" -github -stackoverflow -php.net
 "Warning: mysql_" -stackoverflow -github -w3schools
+"Warning: require(" -github -stackoverflow -php.net
+"Werkzeug Debugger" -github -stackoverflow
+"XPATH syntax error" -github -stackoverflow
 "You have an error in your SQL syntax" -stackoverflow -github -w3schools
+"define('DB_PASSWORD'" filetype:php -github
+"failed to open stream: No such file or directory" -github -stackoverflow
 "mysql_fetch_array()" -stackoverflow -github -w3schools
 "mysql_num_rows()" "Warning" -stackoverflow -github
 "mysqli_fetch" "Warning" -stackoverflow -github
+"near" "syntax error" "SQLite" -github -stackoverflow
+"open_basedir restriction in effect" -github -stackoverflow
+"operator does not exist" "integer" -github -stackoverflow
 "pg_exec()" "Warning" -stackoverflow -github
 "pg_query()" "Warning" -stackoverflow -github
+"sqlite3.OperationalError" -github -stackoverflow
 "supplied argument is not a valid MySQL" -stackoverflow -github
+"unrecognized token" "SQLite" -github -stackoverflow
 ("Alarm" OR "Sicherheit" OR "Videoüberwachung") "Abo" -exemple -test -demo -admin -facebook -linkedin -instagram -youtube -wikipedia -github -twitter
 ("Alarm" OR "Sicherheit" OR "Videoüberwachung") "Abonnement" -exemple -test -demo -admin -facebook -linkedin -instagram -youtube -wikipedia -github -twitter
 ("Alarm" OR "Sicherheit" OR "Videoüberwachung") "Anfrage" "Aarau" -exemple -test -demo -admin -facebook -linkedin -instagram -youtube -wikipedia -github -twitter
@@ -27699,11 +27720,14 @@ intitle:"index of" ".bak"
 intitle:"index of" ".env"
 intitle:"index of" ".log"
 intitle:"index of" ".sql"
+intitle:"index of" "accounts.sql"
 intitle:"index of" "backup"
 intitle:"index of" "config.php"
 intitle:"index of" "credentials"
 intitle:"index of" "database"
 intitle:"index of" "passwd"
+intitle:"index of" "passwords.sql"
+intitle:"index of" "users.sql"
 intitle:"index of" "wp-config.php"
 intitle:"inscription" ("EMS" OR "maison de retraite" OR "résidence seniors") -exemple -test -demo -admin -facebook -linkedin -instagram -youtube -wikipedia -github -twitter
 intitle:"inscription" ("accrobranche" OR "tyrolienne" OR "zip-line") -exemple -test -demo -admin -facebook -linkedin -instagram -youtube -wikipedia -github -twitter
@@ -28021,14 +28045,22 @@ inurl:".php" ("épilation" OR "laser" OR "photoépilation") -exemple -test -demo
 inurl:".php" ("équitation" OR "club hippique" OR "cours d'équitation") -exemple -test -demo -admin -facebook -linkedin -instagram -youtube -wikipedia -github -twitter
 inurl:".php" ("événementiel" OR "organisation d'événements") -exemple -test -demo -admin -facebook -linkedin -instagram -youtube -wikipedia -github -twitter
 inurl:"/.git" -github -gitlab -bitbucket
+inurl:"/__debug__/" -github -stackoverflow
 inurl:"/admin" inurl:".php" -facebook -google -exemple -admin.ch
+inurl:"/admin/" "Django administration" -github -djangoproject.com
 inurl:"/adminer" -demo -exemple -localhost
 inurl:"/adminer.php" -demo -exemple
 inurl:"/administrator" -demo -exemple -joomla.org
+inurl:"/ajax/" inurl:".php" -github -facebook -wordpress
 inurl:"/api/" inurl:".php" -facebook -google -github
+inurl:"/api/admin" -github -facebook -google -swagger.io
+inurl:"/api/config" -github -facebook -google
+inurl:"/api/debug" -github -facebook -google
+inurl:"/api/users" -github -facebook -google -swagger.io
 inurl:"/api/v1/" -facebook -google -github -swagger.io
 inurl:"/api/v2/" -facebook -google -github
 inurl:"/api/v3/" -facebook -google -github
+inurl:"/app_dev.php" -github -symfony.com -exemple
 inurl:"/backend" inurl:".php" -exemple -demo
 inurl:"/backup/" intitle:"index of" -github
 inurl:"/connexion" inurl:".php" -facebook -google
@@ -28047,6 +28079,8 @@ inurl:"/mon-compte" inurl:".php" -facebook -google
 inurl:"/panel" inurl:".php" -exemple -demo
 inurl:"/phpmyadmin" -demo -exemple -localhost
 inurl:"/pma/" -demo -exemple
+inurl:"/preview" inurl:".php" -github -stackoverflow -exemple
+inurl:"/public/index.php" -github -laravel.com -exemple
 inurl:"/register" inurl:".php" -facebook -google
 inurl:"/rendez-vous" -facebook -linkedin -admin -doctolib
 inurl:"/reservation" -facebook -linkedin -admin -booking
@@ -28055,32 +28089,73 @@ inurl:"/swagger" -github -demo -swagger.io
 inurl:"/swagger-ui" -github -demo
 inurl:"/webmail" -exemple -demo
 inurl:"/wp-admin" -demo -exemple -wordpress.com
+inurl:"/wp-content/plugins/" inurl:"?id=" -wordpress.com -github
+inurl:"/wp-content/plugins/revslider" -wordpress.com -github
 inurl:"/wp-content/uploads/" intitle:"index of" -wordpress.com
 inurl:"/wp-json/" -wordpress.com -github -demo
 inurl:"/wp-json/wp/v2/users" -wordpress.com -github
 inurl:"?action=" inurl:".php" -youtube -facebook -google
 inurl:"?article=" inurl:".php" -youtube -facebook -google
 inurl:"?author=" inurl:".php" -wordpress.com -facebook
+inurl:"?callback=" inurl:".php" -github -stackoverflow
 inurl:"?cat=" inurl:".php" -youtube -facebook -google
 inurl:"?cid=" inurl:".php" -youtube -facebook -google
+inurl:"?cmd=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?command=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?dest=" inurl:".php" -github -stackoverflow
+inurl:"?dir=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?document=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?domain=" inurl:".php" ("check" OR "test" OR "lookup") -github
+inurl:"?download=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?exec=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?execute=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?fichier=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?file=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?filename=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?format=json" inurl:".php" -github -facebook
+inurl:"?goto=" inurl:".php" -github -stackoverflow
+inurl:"?host=" inurl:".php" ("test" OR "check" OR "verify") -github
 inurl:"?id=" inurl:".asp" -youtube -facebook -google
 inurl:"?id=" inurl:".aspx" -youtube -facebook -google
 inurl:"?id=" inurl:".php" -youtube -facebook -google -wikipedia -github
+inurl:"?include=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?ip=" inurl:".php" ("ping" OR "traceroute" OR "nslookup") -github
 inurl:"?item=" inurl:".php" -youtube -facebook -google
 inurl:"?keyword=" inurl:".php" -google -youtube -facebook
+inurl:"?lang=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?language=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?load=" inurl:".php" -github -stackoverflow -exemple
 inurl:"?module=" inurl:"?func=" -exemple -demo
 inurl:"?news=" inurl:".php" -youtube -facebook -google
+inurl:"?next=" inurl:".php" -github -stackoverflow
 inurl:"?nid=" inurl:".php" -youtube -facebook -google
+inurl:"?option=com_contact" -joomla.org
+inurl:"?option=com_search" -joomla.org
+inurl:"?output=json" inurl:".php" -github -facebook
 inurl:"?p=" inurl:".php" -youtube -facebook -google
 inurl:"?page=" inurl:".php" -youtube -facebook -google
 inurl:"?page=contact" -facebook -linkedin -admin
+inurl:"?path=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?pg=" inurl:".php" -github -stackoverflow -exemple
 inurl:"?pid=" inurl:".php" -youtube -facebook -google
+inurl:"?ping=" inurl:".php" -github -stackoverflow -exemple
 inurl:"?product=" inurl:".php" -youtube -facebook -google
 inurl:"?q=" inurl:".php" -google -youtube -facebook -amazon
+inurl:"?q=search/node" -drupal.org -github
+inurl:"?q=user/login" -drupal.org -github
 inurl:"?query=" inurl:".php" -google -youtube -facebook
+inurl:"?read=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?redir=" inurl:".php" -github -stackoverflow
+inurl:"?redirect=" inurl:".php" -github -stackoverflow
 inurl:"?ref=" inurl:".php" -youtube -facebook -google
+inurl:"?return=" inurl:".php" -github -stackoverflow
+inurl:"?return_url=" inurl:".php" -github -stackoverflow
 inurl:"?search=" inurl:".php" -google -youtube -facebook
+inurl:"?shell=" inurl:".php" -github -stackoverflow -exemple
 inurl:"?sid=" inurl:".php" -youtube -facebook -google
+inurl:"?skin=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?template=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?tpl=" inurl:".php" -github -stackoverflow -exemple
 inurl:"?user=" inurl:".php" -youtube -facebook -google
 inurl:"?view=" inurl:"?layout=" inurl:".php" -joomla.org
 inurl:"Default.aspx?id="

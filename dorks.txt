@@ -285,3 +285,206 @@ inurl:"kontakt.php" -admin -Beispiel -facebook
 inurl:"contatto.php" -admin -esempio -facebook
 inurl:"/rendez-vous" -facebook -linkedin -admin -doctolib
 inurl:"?page=contact" -facebook -linkedin -admin
+
+
+# ══════════════════════════════════════════════════════════════
+# DORKS SCANNER-SPÉCIFIQUES — Vecteurs détectés par le scanner
+# ══════════════════════════════════════════════════════════════
+
+
+# ── LFI — Paramètres d'inclusion de fichiers ──────────────────
+
+inurl:"?file=" inurl:".php" -github -stackoverflow -exemple -demo
+inurl:"?path=" inurl:".php" -github -stackoverflow -exemple -demo
+inurl:"?include=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?template=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?lang=" inurl:".php" -github -stackoverflow -exemple -demo
+inurl:"?language=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?dir=" inurl:".php" -github -stackoverflow -exemple -demo
+inurl:"?folder=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?load=" inurl:".php" -github -stackoverflow -exemple -demo
+inurl:"?module=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?document=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?pg=" inurl:".php" -github -stackoverflow -exemple -demo
+inurl:"?filename=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?filepath=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?read=" inurl:".php" -github -stackoverflow -exemple -demo
+inurl:"?download=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?view=" inurl:".php" -github -stackoverflow -joomla -exemple
+inurl:"?content=" inurl:".php" -github -stackoverflow -exemple
+inurl:"page=" "lang=" inurl:".php" -github -wordpress -exemple
+inurl:"?fichier=" inurl:".php" -github -stackoverflow -exemple
+
+
+# ── RCE / Command Injection — Paramètres d'exécution ─────────
+
+inurl:"?cmd=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?exec=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?command=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?ping=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?execute=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?run=" inurl:".php" -github -stackoverflow -exemple -demo
+inurl:"?shell=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?ip=" inurl:".php" ("ping" OR "traceroute" OR "nslookup") -github
+inurl:"?host=" inurl:".php" ("test" OR "check" OR "verify") -github -exemple
+inurl:"?domain=" inurl:".php" ("check" OR "test" OR "lookup") -github
+inurl:"?target=" inurl:".php" ("scan" OR "check" OR "test") -github -exemple
+inurl:"?process=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?system=" inurl:".php" -github -stackoverflow -exemple
+
+
+# ── SSTI — Moteurs de templates ───────────────────────────────
+
+inurl:".php" intitle:"Twig" -github -twig.sensiolabs.org -exemple
+inurl:".php" "Rendered by" -github -stackoverflow -exemple
+inurl:"/render" inurl:".php" -github -stackoverflow -exemple
+inurl:"template=" inurl:".php" -github -stackoverflow -exemple
+inurl:".php" "Smarty" ("formulaire" OR "devis" OR "contact") -github -smarty.net
+inurl:"/preview" inurl:".php" -github -stackoverflow -exemple -demo
+inurl:"?tpl=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?skin=" inurl:".php" -github -stackoverflow -exemple -demo
+intitle:"Blade template" -github -laravel.com -exemple
+
+
+# ── FRAMEWORKS PHP — Laravel / Symfony / CodeIgniter ─────────
+
+inurl:"?_token=" inurl:".php" -github -laravel.com -exemple
+inurl:"/public/index.php" -github -laravel.com -exemple -demo
+inurl:"storage/logs/laravel.log" -github -exemple
+inurl:"/app_dev.php" -github -symfony.com -exemple
+inurl:"app_dev.php/_profiler" -github -symfony.com
+inurl:"?controller=" inurl:".php" -github -symfony.com -exemple
+inurl:"?route=" inurl:".php" -github -stackoverflow -exemple
+inurl:"/index.php/welcome" -codeigniter.com -github -exemple
+inurl:"?ci_session=" -github -stackoverflow -exemple
+inurl:"/application/config/database.php" -github -exemple
+"Laravel" inurl:"login" -laravel.com -github -exemple -demo
+"Symfony" inurl:"login" -symfony.com -github -exemple -demo
+"Powered by CakePHP" -cakephp.org -github -exemple
+
+
+# ── FRAMEWORKS PYTHON — Django / Flask ────────────────────────
+
+inurl:"/admin/" "Django administration" -github -djangoproject.com
+inurl:"?csrfmiddlewaretoken=" -github -djangoproject.com -exemple
+"DisallowedHost" "Django" -github -stackoverflow -djangoproject.com
+"DebugToolbar" inurl:".html" -github -exemple
+inurl:"/__debug__/" -github -stackoverflow -exemple
+inurl:"/flask" ("login" OR "register" OR "contact") -github -flask.palletsprojects.com
+"Werkzeug Debugger" -github -stackoverflow -exemple
+"werkzeug.debug" -github -stackoverflow -pallets
+
+
+# ── ERREURS D'EXÉCUTION EXPOSÉES ─────────────────────────────
+
+"Fatal error:" "on line" -github -stackoverflow -php.net -w3schools
+"Parse error: syntax error" -github -stackoverflow -php.net
+"Warning: include(" -github -stackoverflow -php.net
+"Warning: require(" -github -stackoverflow -php.net
+"failed to open stream: No such file or directory" -github -stackoverflow
+"Warning: file_get_contents(" -github -stackoverflow -php.net
+"open_basedir restriction in effect" -github -stackoverflow -php.net
+"OperationalError" "no such table" -github -stackoverflow -python.org
+"sqlite3.OperationalError" -github -stackoverflow -python.org
+"ProgrammingError" "relation" "does not exist" -github -stackoverflow
+"Traceback (most recent call last)" inurl:".php" -github -stackoverflow
+"undefined variable" "Notice:" inurl:".php" -github -stackoverflow -php.net
+"Call to a member function" "on null" -github -stackoverflow -php.net
+"Division by zero" "Warning:" -github -stackoverflow -php.net
+
+
+# ── SQLI — Erreurs DB supplémentaires ────────────────────────
+
+"near" "syntax error" "SQLite" -github -stackoverflow -sqlite.org
+"unrecognized token" "SQLite" -github -stackoverflow
+"sqlite3.OperationalError: unrecognized token" -github -stackoverflow
+"XPATH syntax error" -github -stackoverflow -w3schools
+"Column count doesn't match" -github -stackoverflow -mysql.com
+"Incorrect integer value" -github -stackoverflow -mysql.com
+"Table" "doesn't exist" -github -stackoverflow -mysql.com
+"Unknown column" "in 'field list'" -github -stackoverflow -mysql.com
+"Duplicate entry" "for key" -github -stackoverflow -mysql.com
+"operator does not exist" "integer" -github -stackoverflow -postgresql.org
+"ERROR: syntax error at or near" -github -stackoverflow -postgresql.org
+
+
+# ── DONNÉES SENSIBLES EXPOSÉES — Sensitive data ───────────────
+
+intitle:"index of" "users.sql"
+intitle:"index of" "members.sql"
+intitle:"index of" "accounts.sql"
+intitle:"index of" "customers.sql"
+intitle:"index of" "passwords.sql"
+intitle:"index of" "credentials.sql"
+intitle:"index of" "db_backup"
+intitle:"index of" "/uploads" ".sql"
+inurl:"/backup" intitle:"index of" ".gz" -github
+inurl:"/exports" intitle:"index of" ".csv" -github
+inurl:"/dumps" intitle:"index of" -github -exemple
+"DB_HOST" "DB_PASSWORD" filetype:env -github
+"define('DB_PASSWORD'" filetype:php -github -wordpress.org
+"mysql_connect" "root" filetype:php -github -stackoverflow
+"mysqli_connect" "password" filetype:php -github -stackoverflow
+"connection_string" "password" filetype:php -github -stackoverflow
+
+
+# ── OPEN REDIRECT — Paramètres de redirection ─────────────────
+
+inurl:"?redirect=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?return=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?next=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?goto=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?dest=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?destination=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?redir=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?return_url=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?callback=" inurl:".php" -github -stackoverflow -exemple
+inurl:"?url=" inurl:".php" ("redirect" OR "retour" OR "login") -github -exemple
+inurl:"?to=" inurl:".php" ("redirect" OR "login" OR "auth") -github -exemple
+inurl:"?forward=" inurl:".php" -github -stackoverflow -exemple
+
+
+# ── APIS NON DOCUMENTÉES ───────────────────────────────────────
+
+inurl:"/api/" "\"error\"" "\"message\"" -github -facebook -google
+inurl:"/api/" "\"status\"" "\"data\"" inurl:".php" -github -facebook
+inurl:"/api/users" -github -facebook -google -swagger.io
+inurl:"/api/admin" -github -facebook -google -swagger.io
+inurl:"/api/login" -github -facebook -google -swagger.io
+inurl:"/api/auth" -github -facebook -google -swagger.io
+inurl:"/api/config" -github -facebook -google -swagger.io
+inurl:"/api/debug" -github -facebook -google -swagger.io
+inurl:"/v1/users" -github -facebook -google -swagger.io -stripe.com
+inurl:"/v2/users" -github -facebook -google -swagger.io
+inurl:"?format=json" inurl:".php" -github -facebook -google
+inurl:"?output=json" inurl:".php" -github -facebook -google
+inurl:"/ajax/" inurl:".php" -github -facebook -google -wordpress
+inurl:"/json/" inurl:".php" -github -facebook -google
+
+
+# ── CMS / PLUGINS VULNÉRABLES ─────────────────────────────────
+
+inurl:"/wp-content/plugins/" inurl:"?id=" -wordpress.com -github
+inurl:"/wp-content/plugins/contact-form-7" -wordpress.com -github
+inurl:"/wp-content/plugins/woocommerce" inurl:"?product_id=" -wordpress.com
+inurl:"/wp-content/plugins/gravityforms" -wordpress.com -github
+inurl:"/wp-content/plugins/revslider" -wordpress.com -github
+inurl:"/wp-content/plugins/formidable" -wordpress.com -github
+inurl:"?option=com_contact" -joomla.org -demo
+inurl:"?option=com_search" -joomla.org -demo -exemple
+inurl:"?option=com_k2" -joomla.org -demo
+inurl:"?option=com_virtuemart" -joomla.org -demo
+inurl:"/sites/default/files/" intitle:"index of" -drupal.org
+inurl:"?q=user/login" -drupal.org -github -exemple
+inurl:"?q=search/node" -drupal.org -github -exemple
+inurl:"/modules/" inurl:".php" "Drupal" -drupal.org -github
+
+
+# ── DONNÉES EXPOSÉES PAR RÉPONSE JSON ─────────────────────────
+
+inurl:"/api/" "password" "email" -github -facebook -google -exemplo
+inurl:"/export" "username" "password" -github -stackoverflow -exemple
+inurl:"/dump" "email" "hash" -github -stackoverflow -exemple
+inurl:"/data" "\"users\"" "\"password\"" -github -facebook -google
+"\"admin\"" "\"password\"" inurl:"/api/" -github -facebook -google
+inurl:".json" "password" "username" -github -facebook -google -npm

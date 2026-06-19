@@ -277,6 +277,98 @@ SECT_IT = [
     '("ottica" OR "lenti a contatto")',
 ]
 
+# ── Dorks scanner-spécifiques (LFI, RCE, SSTI, frameworks) ───
+SCANNER_DORKS = [
+    # LFI params
+    'inurl:"?file=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?path=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?include=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?template=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?lang=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?language=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?dir=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?load=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?pg=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?filename=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?download=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?read=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?document=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?fichier=" inurl:".php" -github -stackoverflow -exemple',
+    # RCE / command injection
+    'inurl:"?cmd=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?exec=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?command=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?ping=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?execute=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?shell=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?ip=" inurl:".php" ("ping" OR "traceroute" OR "nslookup") -github',
+    'inurl:"?host=" inurl:".php" ("test" OR "check" OR "verify") -github',
+    'inurl:"?domain=" inurl:".php" ("check" OR "test" OR "lookup") -github',
+    # SSTI
+    'inurl:"?template=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?tpl=" inurl:".php" -github -stackoverflow -exemple',
+    'inurl:"?skin=" inurl:".php" -github -stackoverflow -exemple',
+    '"Smarty" ("formulaire" OR "devis" OR "contact") inurl:".php" -github -smarty.net',
+    'inurl:"/preview" inurl:".php" -github -stackoverflow -exemple',
+    # Frameworks PHP
+    'inurl:"/public/index.php" -github -laravel.com -exemple',
+    'inurl:"/app_dev.php" -github -symfony.com -exemple',
+    '"Laravel" inurl:"login" -laravel.com -github -exemple',
+    '"Symfony" inurl:"login" -symfony.com -github -exemple',
+    '"Powered by CakePHP" -cakephp.org -github',
+    # Frameworks Python
+    'inurl:"/admin/" "Django administration" -github -djangoproject.com',
+    '"DisallowedHost" "Django" -github -stackoverflow',
+    '"Werkzeug Debugger" -github -stackoverflow',
+    'inurl:"/__debug__/" -github -stackoverflow',
+    # Erreurs d'exécution
+    '"Fatal error:" "on line" -github -stackoverflow -php.net',
+    '"Warning: include(" -github -stackoverflow -php.net',
+    '"Warning: require(" -github -stackoverflow -php.net',
+    '"failed to open stream: No such file or directory" -github -stackoverflow',
+    '"open_basedir restriction in effect" -github -stackoverflow',
+    '"OperationalError" "no such table" -github -stackoverflow',
+    '"sqlite3.OperationalError" -github -stackoverflow',
+    # SQLi supplémentaires
+    '"near" "syntax error" "SQLite" -github -stackoverflow',
+    '"unrecognized token" "SQLite" -github -stackoverflow',
+    '"XPATH syntax error" -github -stackoverflow',
+    '"Column count doesn\'t match" -github -stackoverflow',
+    '"Unknown column" "in \'field list\'" -github -stackoverflow',
+    '"operator does not exist" "integer" -github -stackoverflow',
+    # Open redirect
+    'inurl:"?redirect=" inurl:".php" -github -stackoverflow',
+    'inurl:"?return=" inurl:".php" -github -stackoverflow',
+    'inurl:"?next=" inurl:".php" -github -stackoverflow',
+    'inurl:"?goto=" inurl:".php" -github -stackoverflow',
+    'inurl:"?dest=" inurl:".php" -github -stackoverflow',
+    'inurl:"?redir=" inurl:".php" -github -stackoverflow',
+    'inurl:"?callback=" inurl:".php" -github -stackoverflow',
+    'inurl:"?return_url=" inurl:".php" -github -stackoverflow',
+    # APIs non documentées
+    'inurl:"/api/users" -github -facebook -google -swagger.io',
+    'inurl:"/api/admin" -github -facebook -google -swagger.io',
+    'inurl:"/api/config" -github -facebook -google',
+    'inurl:"/api/debug" -github -facebook -google',
+    'inurl:"?format=json" inurl:".php" -github -facebook',
+    'inurl:"?output=json" inurl:".php" -github -facebook',
+    'inurl:"/ajax/" inurl:".php" -github -facebook -wordpress',
+    # Fichiers sensibles
+    'intitle:"index of" "users.sql"',
+    'intitle:"index of" "accounts.sql"',
+    'intitle:"index of" "passwords.sql"',
+    '"DB_HOST" "DB_PASSWORD" filetype:env -github',
+    '"define(\'DB_PASSWORD\'" filetype:php -github',
+    # CMS plugins vulnérables
+    'inurl:"/wp-content/plugins/" inurl:"?id=" -wordpress.com -github',
+    'inurl:"/wp-content/plugins/revslider" -wordpress.com -github',
+    'inurl:"?option=com_contact" -joomla.org',
+    'inurl:"?option=com_search" -joomla.org',
+    'inurl:"?q=user/login" -drupal.org -github',
+    'inurl:"?q=search/node" -drupal.org -github',
+]
+
+
 # ── Dorks techniques ───────────────────────────────────────────
 TECH_DORKS = [
     # SQLi GET params
@@ -458,6 +550,10 @@ def generate():
 
     # Dorks techniques (fixes)
     for d in TECH_DORKS:
+        dorks.add(d)
+
+    # Dorks scanner-spécifiques
+    for d in SCANNER_DORKS:
         dorks.add(d)
 
     # FR : secteur + action (sans région)
