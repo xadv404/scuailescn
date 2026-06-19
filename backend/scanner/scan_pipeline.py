@@ -119,7 +119,7 @@ async def run_full_pipeline(
 
     prefilter_task = asyncio.create_task(sqli_prefilter(url, timeout=8.0))
     passive_task   = asyncio.create_task(
-        run_passive_phases(url, cfg, progress_callback=None, timeout_per_phase=90)
+        run_passive_phases(url, cfg, progress_callback=None, timeout_per_phase=30)
     )
 
     prefilter_result = await prefilter_task
@@ -147,12 +147,13 @@ async def run_full_pipeline(
         url=url,
         findings=passive_result.get("findings", []),
         progress_callback=progress_callback,
+        prefilter_result=prefilter_result,
     )
     exploit_csv           = exploit_result.get("csv_files", [])
     exploit_sqli_confirmed = exploit_result.get("sqli_confirmed", False)
 
     # Step 3b — SQLMap fallback (only if candidate but exploit engine couldn't extract SQL data)
-    if candidate and sqlmap_runner and not exploit_sqli_confirmed:
+    if candidate and confidence == "high" and sqlmap_runner and not exploit_sqli_confirmed:
         db_hint = _db_hint_from_reasons(pf_reasons)
         _cb(f"SQLMap fallback{' [' + db_hint + ']' if db_hint else ''}…", 75)
         sqlmap_result = await sqlmap_runner.run_scan(

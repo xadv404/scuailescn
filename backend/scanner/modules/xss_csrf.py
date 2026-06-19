@@ -2,7 +2,7 @@
 XSS & CSRF module.
 
 Detects:
-  - Reflected XSS (parameter reflection without encoding)
+  - Reflected XSS (parameter reflection without encoding, GET + POST forms)
   - DOM-based XSS indicators (innerHTML, document.write patterns)
   - CSRF: forms without anti-CSRF tokens
   - Missing security headers (X-XSS-Protection, CSP)
@@ -11,7 +11,7 @@ Detects:
 import re
 from html import unescape
 from typing import Any, Dict, List
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from backend.scanner.modules.base_module import BaseModule
 
@@ -41,6 +41,42 @@ _OPEN_REDIRECT_PARAMS = re.compile(
 _OPEN_REDIRECT_INDICATORS = [
     re.compile(r'Location:\s*https?://', re.IGNORECASE),
 ]
+
+# Form parsing (reused from injection module to avoid circular import)
+_FORM_RE_X   = re.compile(r'<form[^>]*>(.*?)</form>', re.IGNORECASE | re.DOTALL)
+_ACTION_RE_X = re.compile(r'\baction=["\']([^"\']*)["\']', re.IGNORECASE)
+_METHOD_RE_X = re.compile(r'\bmethod=["\']([^"\']*)["\']', re.IGNORECASE)
+_INPUT_RE_X  = re.compile(r'<input([^>]*)>', re.IGNORECASE)
+_INAME_RE_X  = re.compile(r'\bname=["\']([^"\']*)["\']', re.IGNORECASE)
+_IVALUE_RE_X = re.compile(r'\bvalue=["\']([^"\']*)["\']', re.IGNORECASE)
+_ITYPE_RE_X  = re.compile(r'\btype=["\']([^"\']*)["\']', re.IGNORECASE)
+_XSS_INJECTABLE = {"text", "search", "email", "number", "url", "tel", ""}
+
+
+def _parse_forms_xss(html: str, base_url: str) -> List[Dict]:
+    forms = []
+    for m in _FORM_RE_X.finditer(html):
+        tag  = m.group(0)[:300]
+        body = m.group(1)
+        action_m = _ACTION_RE_X.search(tag)
+        method_m = _METHOD_RE_X.search(tag)
+        method = (method_m.group(1) if method_m else "get").lower().strip()
+        raw_action = action_m.group(1) if action_m else ""
+        action = urljoin(base_url, raw_action) if raw_action else base_url
+        fields: Dict[str, Dict] = {}
+        for inp in _INPUT_RE_X.finditer(body):
+            attrs = inp.group(1)
+            nm  = _INAME_RE_X.search(attrs)
+            val = _IVALUE_RE_X.search(attrs)
+            tp  = _ITYPE_RE_X.search(attrs)
+            if not nm:
+                continue
+            fields[nm.group(1)] = {
+                "value": val.group(1) if val else "",
+                "type":  (tp.group(1) if tp else "text").lower().strip(),
+            }
+        forms.append({"action": action, "method": method, "fields": fields})
+    return forms
 
 
 class XssCsrfModule(BaseModule):
@@ -119,7 +155,44 @@ class XssCsrfModule(BaseModule):
                 ),
             ))
 
-        # 3. CSRF — forms without anti-CSRF tokens
+        # 3. XSS via POST forms
+        forms = _parse_forms_xss(body, url)
+        for form in forms:
+            if form["method"] not in ("post", "put"):
+                continue
+            action = form["action"]
+            fields = form["fields"]
+            injectable = [n for n, m in fields.items() if m["type"] in _XSS_INJECTABLE]
+            for fname in injectable:
+                post_data = {n: m["value"] for n, m in fields.items()}
+                post_data[fname] = _XSS_PROBE
+                try:
+                    resp = await self._client.post(action, data=post_data)
+                    if _XSS_PROBE_RE.search(resp.text[:10000]):
+                        findings.append(self._finding(
+                            name="reflected_xss_post",
+                            severity="high",
+                            confidence="confirmed",
+                            description=f"XSS réfléchi (POST) — champ « {fname} »",
+                            url=url,
+                            location=action,
+                            evidence="Probe <script> retourné non encodé dans la réponse POST",
+                            impact=(
+                                "Un attaquant peut injecter du code JavaScript arbitraire "
+                                "exécuté dans le navigateur des victimes — vol de session, "
+                                "phishing, keylogging."
+                            ),
+                            recommendation=(
+                                "Encoder toutes les sorties HTML (htmlspecialchars/escapeHtml). "
+                                "Implémenter une CSP restrictive. "
+                                "Valider et filtrer les entrées côté serveur."
+                            ),
+                        ))
+                        break
+                except Exception:
+                    pass
+
+        # 4. CSRF — forms without anti-CSRF tokens
         form_re   = re.compile(r'<form[^>]*>.*?</form>', re.IGNORECASE | re.DOTALL)
         input_re  = re.compile(r'<input[^>]+>', re.IGNORECASE)
         method_re = re.compile(r'method\s*=\s*["\']?(post|put|patch|delete)', re.IGNORECASE)
@@ -156,7 +229,7 @@ class XssCsrfModule(BaseModule):
                 ))
                 break
 
-        # 4. Open redirect
+        # 5. Open redirect
         if _OPEN_REDIRECT_PARAMS.search(parsed.query):
             redirect_params = [
                 n for n, _ in params

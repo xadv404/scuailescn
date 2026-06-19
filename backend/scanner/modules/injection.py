@@ -2,14 +2,14 @@
 Injection module.
 
 Detects:
-  - SQL Injection (passive error-based)
+  - SQL Injection (error-based GET + POST, boolean-blind GET)
   - NoSQL Injection (MongoDB operator payloads)
   - Server-Side Template Injection (SSTI)
   - Command Injection indicators
 """
 import re
-from typing import Any, Dict, List
-from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
+from typing import Any, Dict, List, Optional
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 from backend.scanner.modules.base_module import BaseModule
 
@@ -25,6 +25,19 @@ _SQL_ERROR_PATTERNS = [
         r"Microsoft OLE DB Provider",
         r"SQLiteException",
         r"DB2 SQL error",
+        # SQLite / Python
+        r"unrecognized token",
+        r"near ['\"].+?['\"]: syntax error",
+        r"sqlite3\.\w+Error",
+        r"OperationalError:",
+        # PDO / PHP
+        r"Uncaught PDOException",
+        r"mysql_fetch_",
+        r"supplied argument is not a valid MySQL",
+        # PostgreSQL
+        r"org\.postgresql\.util\.PSQLException",
+        # MySQL extractvalue
+        r"XPATH syntax error",
     ]
 ]
 
@@ -42,9 +55,7 @@ _NOSQL_SUCCESS_SIGNS = [
     re.compile(r'CastError', re.IGNORECASE),
 ]
 
-_SSTI_MARKER = "__SSTI49__"
 _SSTI_PAYLOADS = ["{{7*7}}", "${7*7}", "<%= 7*7 %>", "#{7*7}", "{7*7}"]
-_SSTI_RESULT  = re.compile(r"49|__SSTI49__", re.IGNORECASE)
 
 _CMD_ERROR_PATTERNS = [
     re.compile(p, re.IGNORECASE) for p in [
@@ -57,6 +68,51 @@ _CMD_ERROR_PATTERNS = [
     ]
 ]
 
+# ── Form parsing ────────────────────────────────────────────────────────────
+_FORM_RE     = re.compile(r'<form[^>]*>(.*?)</form>', re.IGNORECASE | re.DOTALL)
+_ACTION_RE   = re.compile(r'\baction=["\']([^"\']*)["\']', re.IGNORECASE)
+_METHOD_RE   = re.compile(r'\bmethod=["\']([^"\']*)["\']', re.IGNORECASE)
+_INPUT_RE    = re.compile(r'<input([^>]*)>', re.IGNORECASE)
+_INAME_RE    = re.compile(r'\bname=["\']([^"\']*)["\']', re.IGNORECASE)
+_IVALUE_RE   = re.compile(r'\bvalue=["\']([^"\']*)["\']', re.IGNORECASE)
+_ITYPE_RE    = re.compile(r'\btype=["\']([^"\']*)["\']', re.IGNORECASE)
+_TEXTAREA_RE = re.compile(r'<textarea[^>]+name=["\']([^"\']*)["\']', re.IGNORECASE)
+
+_INJECTABLE_TYPES = {"text", "search", "email", "number", "url", "tel", "password", "textarea", ""}
+
+
+def _parse_forms(html: str, base_url: str) -> List[Dict]:
+    forms = []
+    for m in _FORM_RE.finditer(html):
+        tag  = m.group(0)[:300]
+        body = m.group(1)
+
+        action_m = _ACTION_RE.search(tag)
+        method_m = _METHOD_RE.search(tag)
+
+        method     = (method_m.group(1) if method_m else "get").lower().strip()
+        raw_action = action_m.group(1) if action_m else ""
+        action     = urljoin(base_url, raw_action) if raw_action else base_url
+
+        fields: Dict[str, Dict] = {}
+        for inp in _INPUT_RE.finditer(body):
+            attrs = inp.group(1)
+            nm    = _INAME_RE.search(attrs)
+            val   = _IVALUE_RE.search(attrs)
+            tp    = _ITYPE_RE.search(attrs)
+            if not nm:
+                continue
+            fields[nm.group(1)] = {
+                "value": val.group(1) if val else "",
+                "type":  (tp.group(1) if tp else "text").lower().strip(),
+            }
+
+        for ta in _TEXTAREA_RE.finditer(body):
+            fields[ta.group(1)] = {"value": "", "type": "textarea"}
+
+        forms.append({"action": action, "method": method, "fields": fields})
+    return forms
+
 
 class InjectionModule(BaseModule):
     NAME     = "injection"
@@ -67,11 +123,28 @@ class InjectionModule(BaseModule):
         parsed = urlparse(url)
         params = parse_qsl(parsed.query, keep_blank_values=True)
 
-        if not params:
-            return findings
+        if params:
+            findings.extend(await self._scan_get_params(url, parsed, params))
+
+        # POST form injection
+        try:
+            base_resp = await self._client.get(url)
+            forms = _parse_forms(base_resp.text[:30000], url)
+            for form in forms:
+                if form["method"] in ("post", "put"):
+                    findings.extend(await self._scan_post_form(url, form))
+        except Exception:
+            pass
+
+        return self._dedup(findings)
+
+    async def _scan_get_params(
+        self, url: str, parsed, params: List
+    ) -> List[Dict[str, Any]]:
+        findings: List[Dict[str, Any]] = []
 
         for idx, (pname, pval) in enumerate(params):
-            # ── SQL Injection (single-quote) ────────────────────
+            # ── SQL Injection (single-quote error-based) ────────────
             sqli_params = list(params)
             sqli_params[idx] = (pname, "'" + pval)
             sqli_url = urlunparse(parsed._replace(query=urlencode(sqli_params)))
@@ -103,7 +176,12 @@ class InjectionModule(BaseModule):
             except Exception:
                 pass
 
-            # ── NoSQL Injection ────────────────────────────────────
+            # ── Boolean-blind SQLi ──────────────────────────────────
+            blind = await self._check_boolean_blind(url, parsed, params, idx, pname, pval)
+            if blind:
+                findings.append(blind)
+
+            # ── NoSQL Injection ─────────────────────────────────────
             for suffix, label in _NOSQL_PAYLOADS:
                 nosql_params = [(k, v) for k, v in params]
                 nosql_params[idx] = (pname + suffix, "1")
@@ -137,7 +215,7 @@ class InjectionModule(BaseModule):
                 except Exception:
                     pass
 
-            # ── SSTI ───────────────────────────────────────────────
+            # ── SSTI ────────────────────────────────────────────────
             for payload in _SSTI_PAYLOADS:
                 ssti_params = list(params)
                 ssti_params[idx] = (pname, payload)
@@ -168,7 +246,7 @@ class InjectionModule(BaseModule):
                 except Exception:
                     pass
 
-            # ── Command Injection (error-based) ────────────────────
+            # ── Command Injection (error-based) ─────────────────────
             cmd_payloads = [
                 (pval + "; id", "semicolon"),
                 (pval + "| id", "pipe"),
@@ -205,4 +283,97 @@ class InjectionModule(BaseModule):
                 except Exception:
                     pass
 
-        return self._dedup(findings)
+        return findings
+
+    async def _check_boolean_blind(
+        self, url: str, parsed, params: List, idx: int, pname: str, pval: str
+    ) -> Optional[Dict[str, Any]]:
+        """Return a finding if AND 1=1 vs AND 1=2 show a meaningful response difference."""
+        try:
+            params_t = list(params); params_t[idx] = (pname, pval + " AND 1=1")
+            params_f = list(params); params_f[idx] = (pname, pval + " AND 1=2")
+            url_t = urlunparse(parsed._replace(query=urlencode(params_t)))
+            url_f = urlunparse(parsed._replace(query=urlencode(params_f)))
+
+            r_t = await self._client.get(url_t)
+            r_f = await self._client.get(url_f)
+
+            len_t = len(r_t.text)
+            len_f = len(r_f.text)
+            diff  = abs(len_t - len_f)
+
+            if diff < 50:
+                return None
+            if diff / max(len_t, len_f, 1) < 0.05:
+                return None
+
+            # Confirm 1=1 response is close to baseline (so 1=2 is the outlier)
+            r_b   = await self._client.get(url)
+            len_b = len(r_b.text)
+            if abs(len_t - len_b) > diff * 0.8:
+                return None
+
+            return self._finding(
+                name="sql_injection_blind",
+                severity="high",
+                confidence="medium",
+                description=f"SQL Injection (boolean-blind) potentielle — paramètre « {pname} »",
+                url=url,
+                location=url_t,
+                evidence=f"AND 1=1 → {len_t} octets, AND 1=2 → {len_f} octets (diff={diff})",
+                impact=(
+                    "Un attaquant peut exfiltrer des données bit par bit via des requêtes "
+                    "conditionnelles (blind SQLi). Accès possible à toute la base de données."
+                ),
+                recommendation=(
+                    "Utiliser des requêtes paramétrées (prepared statements). "
+                    "Valider et filtrer toutes les entrées utilisateur."
+                ),
+            )
+        except Exception:
+            return None
+
+    async def _scan_post_form(self, url: str, form: Dict) -> List[Dict[str, Any]]:
+        """Test SQL injection on a POST form by injecting into each text field."""
+        findings: List[Dict[str, Any]] = []
+        action = form["action"]
+        fields = form["fields"]
+
+        injectable = [
+            name for name, meta in fields.items()
+            if meta["type"] in _INJECTABLE_TYPES
+        ]
+        if not injectable:
+            return findings
+
+        for fname in injectable:
+            post_data = {name: meta["value"] for name, meta in fields.items()}
+            post_data[fname] = "'" + fields[fname]["value"]
+
+            try:
+                resp = await self._client.post(action, data=post_data)
+                for pat in _SQL_ERROR_PATTERNS:
+                    m = pat.search(resp.text[:8000])
+                    if m:
+                        findings.append(self._finding(
+                            name="sql_injection_error_based",
+                            severity="high",
+                            confidence="confirmed",
+                            description=f"SQL Injection (error-based, POST) — champ « {fname} »",
+                            url=url,
+                            location=action,
+                            evidence=m.group(0)[:300],
+                            impact=(
+                                "Un attaquant peut extraire des données, contourner "
+                                "l'authentification ou exécuter des commandes système."
+                            ),
+                            recommendation=(
+                                "Utiliser des requêtes paramétrées (prepared statements). "
+                                "Valider et filtrer toutes les entrées utilisateur."
+                            ),
+                        ))
+                        break
+            except Exception:
+                pass
+
+        return findings

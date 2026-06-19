@@ -42,7 +42,11 @@ _SQL_ERRORS = [re.compile(p, re.IGNORECASE) for p in [
     r"supplied argument is not a valid MySQL",
     r"mysql_fetch",
     r"pg_query\(\)",
-    r"sqlite3\.OperationalError",
+    r"sqlite3\.\w+Error",
+    r"OperationalError:",
+    r"unrecognized token",
+    r"near ['\"].+?['\"]: syntax error",
+    r"XPATH syntax error",
 ]]
 
 # ── Patterns de formulaires HTML ───────────────────────────────
