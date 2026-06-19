@@ -43,6 +43,7 @@ _reporter = ReportGenerator()
 _scans: Dict[str, Dict[str, Any]] = {}
 _event_log: deque = deque(maxlen=200)
 _last_batch_ids: List[str] = []
+_batch_started_at: Optional[datetime] = None
 
 
 def _log_event(scan_id: str, url: str, msg: str, pct: int = 0) -> None:
@@ -165,13 +166,21 @@ async def get_stats():
             sqli_count += 1
             dbs_count  += len(s.get("csv_files", []))
 
+    all_done = len(active) == 0 and len(_last_batch_ids) > 0
+    batch_duration_s = None
+    if _batch_started_at:
+        batch_duration_s = round((datetime.now() - _batch_started_at).total_seconds())
+
     return {
-        "active_count":    len(active),
-        "completed_count": len(completed),
-        "failed_count":    len(failed),
-        "total_vulns":     total_vulns,
-        "sqli_confirmed":  sqli_count,
-        "dbs_extracted":   dbs_count,
+        "active_count":      len(active),
+        "completed_count":   len(completed),
+        "failed_count":      len(failed),
+        "total_vulns":       total_vulns,
+        "sqli_confirmed":    sqli_count,
+        "dbs_extracted":     dbs_count,
+        "batch_started_at":  _batch_started_at.isoformat() if _batch_started_at else None,
+        "batch_duration_s":  batch_duration_s,
+        "batch_done":        all_done,
         "active_scans": [
             {
                 "scan_id":      s["scan_id"],
@@ -210,8 +219,9 @@ async def start_scan(req: ScanRequest, bg: BackgroundTasks):
     if not valid_urls:
         raise HTTPException(status_code=422, detail="Aucune URL valide")
 
-    global _last_batch_ids
+    global _last_batch_ids, _batch_started_at
     cfg = req.config or {}
+    _batch_started_at = datetime.now()
     ids = []
     for url in valid_urls:
         sid = uuid.uuid4().hex[:10]
@@ -247,7 +257,8 @@ async def upload_targets(file: UploadFile, bg: BackgroundTasks):
     # Sauvegarder pour référence
     TARGETS_FILE.write_text(raw, encoding="utf-8")
 
-    global _last_batch_ids
+    global _last_batch_ids, _batch_started_at
+    _batch_started_at = datetime.now()
     ids = []
     for url in urls:
         sid = uuid.uuid4().hex[:10]

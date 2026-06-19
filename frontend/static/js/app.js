@@ -840,8 +840,8 @@ function showPage(name) {
 window.showPage = showPage;
 
 /* ── Stats page ───────────────────────────────────────────────── */
-let _sessionStart = Date.now();
-let _seenEvents   = new Set();
+let _batchStartedAt = null;
+let _seenEvents     = new Set();
 
 function clearConsole() {
   _seenEvents.clear();
@@ -869,11 +869,17 @@ async function refreshStats() {
       badge.style.display = d.active_count > 0 ? '' : 'none';
     }
 
-    // Elapsed
-    const elapsed = Math.floor((Date.now() - _sessionStart) / 1000);
-    const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
-    const ss = String(elapsed % 60).padStart(2, '0');
-    set('st-elapsed', `${mm}:${ss}`);
+    // Durée du scan — basée sur batch_started_at du backend
+    if (d.batch_started_at) _batchStartedAt = new Date(d.batch_started_at);
+    if (_batchStartedAt) {
+      const ref     = d.batch_done ? d.batch_duration_s : Math.floor((Date.now() - _batchStartedAt) / 1000);
+      const elapsed = ref ?? 0;
+      const mm = String(Math.floor(elapsed / 60)).padStart(2, '0');
+      const ss = String(elapsed % 60).padStart(2, '0');
+      set('st-elapsed', `${mm}:${ss}`);
+    } else {
+      set('st-elapsed', '—');
+    }
 
     // Cibles actives
     const listEl = $('#stats-active-list');
