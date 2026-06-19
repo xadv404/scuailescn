@@ -334,7 +334,7 @@ class InjectionModule(BaseModule):
             return None
 
     async def _scan_post_form(self, url: str, form: Dict) -> List[Dict[str, Any]]:
-        """Test SQL injection on a POST form by injecting into each text field."""
+        """Test SQLi, RCE, LFI and SSTI on each injectable POST form field."""
         findings: List[Dict[str, Any]] = []
         action = form["action"]
         fields = form["fields"]
@@ -346,10 +346,14 @@ class InjectionModule(BaseModule):
         if not injectable:
             return findings
 
-        for fname in injectable:
-            post_data = {name: meta["value"] for name, meta in fields.items()}
-            post_data[fname] = "'" + fields[fname]["value"]
+        base_data = {name: meta["value"] for name, meta in fields.items()}
 
+        for fname in injectable:
+            fval = fields[fname]["value"]
+
+            # ── SQL Injection (single-quote error-based) ────────────
+            post_data = dict(base_data)
+            post_data[fname] = "'" + fval
             try:
                 resp = await self._client.post(action, data=post_data)
                 for pat in _SQL_ERROR_PATTERNS:
@@ -375,5 +379,98 @@ class InjectionModule(BaseModule):
                         break
             except Exception:
                 pass
+
+            # ── Command Injection / RCE (POST) ─────────────────────
+            for cmd_suffix, label in [("; id", "semicolon"), ("| id", "pipe"), ("&& id", "AND")]:
+                post_data = dict(base_data)
+                post_data[fname] = fval + cmd_suffix
+                try:
+                    resp = await self._client.post(action, data=post_data)
+                    for pat in _CMD_ERROR_PATTERNS:
+                        m = pat.search(resp.text[:4000])
+                        if m:
+                            findings.append(self._finding(
+                                name="command_injection_detected",
+                                severity="critical",
+                                confidence="high",
+                                description=f"Command Injection possible (POST, {label}) — champ « {fname} »",
+                                url=url,
+                                location=action,
+                                evidence=m.group(0)[:200],
+                                impact=(
+                                    "Exécution de commandes système arbitraires sur le serveur — "
+                                    "compromission totale possible."
+                                ),
+                                recommendation=(
+                                    "Ne jamais passer des entrées utilisateur à des fonctions "
+                                    "d'exécution système. Utiliser des API spécialisées."
+                                ),
+                            ))
+                            break
+                except Exception:
+                    pass
+
+            # ── LFI / Path Traversal (POST) ────────────────────────
+            _LFI_PROBE = re.compile(r'root:[x*!]:0:0:|for 16-bit app support', re.IGNORECASE)
+            for lfi_payload, lfi_label in [
+                ("../../../etc/passwd",       "3-level traversal"),
+                ("../../../../etc/passwd",    "4-level traversal"),
+                ("../../../windows/win.ini",  "Windows 3-level"),
+            ]:
+                post_data = dict(base_data)
+                post_data[fname] = lfi_payload
+                try:
+                    resp = await self._client.post(action, data=post_data)
+                    if _LFI_PROBE.search(resp.text[:5000]):
+                        findings.append(self._finding(
+                            name="lfi_path_traversal",
+                            severity="critical",
+                            confidence="confirmed",
+                            description=f"LFI / Path Traversal (POST, {lfi_label}) — champ « {fname} »",
+                            url=url,
+                            location=action,
+                            evidence=_LFI_PROBE.search(resp.text[:500]).group(0)[:100],
+                            impact=(
+                                "Lecture de fichiers arbitraires sur le serveur — "
+                                "accès possible aux credentials, clés privées, configs."
+                            ),
+                            recommendation=(
+                                "Valider et canonicaliser les chemins de fichiers. "
+                                "Ne jamais utiliser des entrées utilisateur dans des chemins. "
+                                "Utiliser une liste blanche de fichiers autorisés."
+                            ),
+                        ))
+                        break
+                except Exception:
+                    pass
+
+            # ── SSTI (POST) ────────────────────────────────────────
+            for ssti_payload in _SSTI_PAYLOADS:
+                post_data = dict(base_data)
+                post_data[fname] = ssti_payload
+                try:
+                    resp = await self._client.post(action, data=post_data)
+                    body = resp.text[:6000]
+                    if "49" in body and ssti_payload not in body:
+                        findings.append(self._finding(
+                            name="ssti_detected",
+                            severity="critical",
+                            confidence="high",
+                            description=f"SSTI (POST) — champ « {fname} » avec {ssti_payload!r}",
+                            url=url,
+                            location=action,
+                            evidence=f"Payload {ssti_payload!r} → résultat '49' dans la réponse POST",
+                            impact=(
+                                "SSTI peut permettre l'exécution de code arbitraire (RCE) "
+                                "sur le serveur, lecture de fichiers et pivoting."
+                            ),
+                            recommendation=(
+                                "Ne jamais interpoler des entrées utilisateur dans des templates. "
+                                "Utiliser un moteur de template sécurisé avec sandbox."
+                            ),
+                        ))
+                        break
+                except Exception:
+                    pass
 
         return findings
