@@ -21,7 +21,7 @@ from backend.utils.validators import sanitize_config_for_report
 
 logger = setup_logger("reporter", LOGS_DIR / "scanner.log")
 
-_TOOL_VERSION  = "2.0.0"
+_TOOL_VERSION  = "3.0.0"
 _SEVERITY_ORDER = ["critical", "high", "medium", "low", "info"]
 
 
@@ -43,6 +43,9 @@ class ReportGenerator:
         scan_config: Optional[Dict[str, Any]] = None,
         scan_summary: Optional[Dict[str, Any]] = None,
         database_type: Optional[str] = None,
+        risk_score: Optional[int] = None,
+        categories: Optional[Dict[str, Any]] = None,
+        technologies: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """Create, save, and return a complete audit report dict."""
         duration = round((end_time - start_time).total_seconds(), 2)
@@ -70,11 +73,19 @@ class ReportGenerator:
             scan_summary = {
                 "total_findings":   len(sorted_findings),
                 "risk_level":       risk_level,
+                "risk_score":       risk_score or 0,
                 "database_type":    database_type or "Non détecté",
                 "database_engines": {database_type: 1} if database_type else {},
                 "severity":         sev_count,
                 "vulnerable":       vulnerable,
+                "categories":       categories or {},
+                "technologies":     technologies or [],
             }
+        else:
+            # Ensure new fields are present even when caller provides scan_summary
+            scan_summary.setdefault("risk_score", risk_score or 0)
+            scan_summary.setdefault("categories", categories or {})
+            scan_summary.setdefault("technologies", technologies or [])
 
         # Deduplicated action list for the client remediation section
         recommendations = self._build_recommendations(sorted_findings)
@@ -142,6 +153,7 @@ class ReportGenerator:
                         "date":          data.get("date"),
                         "status":        data.get("status"),
                         "risk_level":    ss.get("risk_level", "N/A"),
+                        "risk_score":    ss.get("risk_score", 0),
                         "total_findings":ss.get("total_findings", 0),
                         "vulnerable":    ss.get("vulnerable", False),
                         "database_type": ss.get("database_type", "—"),

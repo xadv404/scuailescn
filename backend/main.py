@@ -1,6 +1,7 @@
 """
 SQL Audit Scanner - FastAPI application entry point
 """
+import asyncio
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -17,6 +18,8 @@ from pydantic import BaseModel
 
 from config import FRONTEND_DIR, LOGS_DIR, SCAN_DEFAULT_CONFIG
 from backend.scanner.analyzer import ResultAnalyzer
+from backend.scanner.core.scorer import calculate_risk_score
+from backend.scanner.passive_scanner import run_passive_scan
 from backend.scanner.reporter import ReportGenerator
 from backend.scanner.sqlmap_runner import SQLMapRunner
 from backend.utils.logger import setup_logger
@@ -28,7 +31,7 @@ logger = setup_logger("main", LOGS_DIR / "app.log")
 app = FastAPI(
     title="SQL Audit Scanner",
     description="Professional SQL Injection Audit Tool – local use only",
-    version="2.0.0",
+    version="3.0.0",
     docs_url="/api/docs",
     redoc_url="/api/redoc",
 )
@@ -55,6 +58,62 @@ class ScanRequest(BaseModel):
     scan_config: Optional[Dict[str, Any]] = None
 
 
+# ── Helpers ────────────────────────────────────────────────────
+
+def _merge_all_findings(
+    passive: List[Dict[str, Any]],
+    sqlmap: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """Merge passive + SQLMap findings, deduplicating by type."""
+    merged   = list(passive)
+    existing = {f["type"] for f in merged}
+    for f in sqlmap:
+        if f["type"] not in existing:
+            merged.append(f)
+            existing.add(f["type"])
+    return merged
+
+
+def _build_categories(findings: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Return per-category finding counts and severity breakdown."""
+    cats: Dict[str, Dict[str, Any]] = {}
+    for f in findings:
+        cat = f.get("category", "Général")
+        sev = f.get("severity", "info")
+        if cat not in cats:
+            cats[cat] = {
+                "count": 0,
+                "severity": {"critical": 0, "high": 0, "medium": 0, "low": 0, "info": 0},
+            }
+        cats[cat]["count"] += 1
+        if sev in cats[cat]["severity"]:
+            cats[cat]["severity"][sev] += 1
+    return cats
+
+
+def _detect_technologies(
+    passive_findings: List[Dict[str, Any]],
+    database_type: Optional[str],
+) -> List[str]:
+    techs: List[str] = []
+    if database_type:
+        techs.append(database_type)
+    for f in passive_findings:
+        combined = (str(f.get("evidence", "")) + " " + str(f.get("description", ""))).lower()
+        for tech, keywords in (
+            ("PHP",       ("php",)),
+            ("WordPress", ("wordpress", "wp-")),
+            ("Nginx",     ("nginx",)),
+            ("Apache",    ("apache",)),
+            ("Node.js",   ("express", "node.js")),
+            ("Django",    ("django",)),
+            ("Laravel",   ("laravel",)),
+        ):
+            if any(kw in combined for kw in keywords) and tech not in techs:
+                techs.append(tech)
+    return techs
+
+
 # ── Background task ────────────────────────────────────────────
 async def _run_scan(scan_id: str, url: str, config: Dict[str, Any]) -> None:
     start = datetime.now()
@@ -63,65 +122,104 @@ async def _run_scan(scan_id: str, url: str, config: Dict[str, Any]) -> None:
         _scans[scan_id].update(kw)
 
     try:
-        _upd(status="running", progress="Initialisation de SQLMap…")
+        _upd(status="running", progress="Initialisation des modules de détection…", progress_pct=5)
         logger.info(f"[{scan_id}] Scan started → {url}")
 
-        _upd(progress="Tests d'injection SQL en cours…")
-        result = await _runner.run_scan(url, scan_id, config=config)
+        # ── Progress callback for passive modules ──────────────
+        _passive_total = 7  # number of passive modules
+
+        def _passive_cb(module_name: str, done: int, total: int) -> None:
+            pct = 5 + round((done / total) * 40)
+            _upd(
+                progress=f"Modules passifs : {done}/{total} ({module_name})…",
+                progress_pct=pct,
+            )
+
+        # ── Run passive scan + SQLMap concurrently ─────────────
+        _upd(progress="Analyse passive et SQLMap en parallèle…", progress_pct=10)
+
+        gather_results = await asyncio.gather(
+            run_passive_scan(url, config, _passive_cb),
+            _runner.run_scan(url, scan_id, config=config),
+            return_exceptions=True,
+        )
+
+        passive_findings: List[Dict[str, Any]] = (
+            gather_results[0] if isinstance(gather_results[0], list) else []
+        )
+        sqlmap_result: Dict[str, Any] = (
+            gather_results[1]
+            if isinstance(gather_results[1], dict)
+            else {"success": False, "error": str(gather_results[1])}
+        )
+
         end = datetime.now()
 
-        if not result["success"]:
-            _upd(status="failed", error=result.get("error", "Erreur inconnue"))
-            _reporter.generate(
-                scan_id=scan_id, url=url, findings=[], status="failed",
-                start_time=start, end_time=end,
-                error=result.get("error"), scan_config=config,
-            )
-            return
+        # ── Extract SQLMap findings ────────────────────────────
+        database_type: Optional[str] = None
+        if sqlmap_result.get("success"):
+            raw_stdout      = sqlmap_result.get("stdout", "")
+            raw_dir         = sqlmap_result.get("output_dir", "")
+            stdout_findings = _analyzer.analyze(raw_stdout, url)
+            dir_findings    = _analyzer.analyze_from_dir(raw_dir, url)
+            sqlmap_findings = _analyzer.merge(stdout_findings, dir_findings)
+            database_type   = _analyzer.detect_database_type(raw_stdout)
+        else:
+            sqlmap_findings = []
+            if not sqlmap_result.get("success") and sqlmap_result.get("error"):
+                logger.warning(f"[{scan_id}] SQLMap error: {sqlmap_result['error']}")
 
-        _upd(progress="Analyse des résultats…")
-        raw_stdout = result.get("stdout", "")
-        raw_dir    = result.get("output_dir", "")
+        _upd(progress="Analyse et consolidation des résultats…", progress_pct=80)
 
-        stdout_findings = _analyzer.analyze(raw_stdout, url)
-        dir_findings    = _analyzer.analyze_from_dir(raw_dir, url)
-        findings        = _analyzer.merge(stdout_findings, dir_findings)
+        all_findings = _merge_all_findings(passive_findings, sqlmap_findings)
+        risk_score   = calculate_risk_score(all_findings)
+        categories   = _build_categories(all_findings)
+        technologies = _detect_technologies(passive_findings, database_type)
 
-        # Detect database engine from combined output
-        combined_text   = raw_stdout
-        database_type   = _analyzer.detect_database_type(combined_text)
-
-        # Build scan_summary with full statistics
+        # ── Build scan_summary ─────────────────────────────────
         from backend.scanner.reporter import _SEVERITY_ORDER
         sev_count = {s: 0 for s in _SEVERITY_ORDER}
-        for f in findings:
+        for f in all_findings:
             sev = f.get("severity", "info")
             if sev in sev_count:
                 sev_count[sev] += 1
-        risk_level  = "NONE"
+
+        risk_level = "NONE"
         for lvl in _SEVERITY_ORDER:
             if sev_count[lvl] > 0:
                 risk_level = lvl.upper()
                 break
 
-        scan_summary = _analyzer.build_scan_summary(findings, database_type, risk_level)
+        scan_summary = _analyzer.build_scan_summary(all_findings, database_type, risk_level)
+        scan_summary["risk_score"]   = risk_score
+        scan_summary["categories"]   = categories
+        scan_summary["technologies"] = technologies
 
-        _upd(progress="Génération du rapport…")
+        _upd(progress="Génération du rapport…", progress_pct=90)
         report = _reporter.generate(
-            scan_id=scan_id, url=url, findings=findings, status="completed",
-            start_time=start, end_time=end,
-            scan_config=config, scan_summary=scan_summary, database_type=database_type,
+            scan_id=scan_id,
+            url=url,
+            findings=all_findings,
+            status="completed",
+            start_time=start,
+            end_time=end,
+            scan_config=config,
+            scan_summary=scan_summary,
+            database_type=database_type,
+            risk_score=risk_score,
+            categories=categories,
+            technologies=technologies,
         )
-        _upd(status="completed", report=report, progress="Terminé")
+        _upd(status="completed", report=report, progress="Terminé", progress_pct=100)
         logger.info(
-            f"[{scan_id}] Completed — {len(findings)} finding(s) — "
-            f"risk={scan_summary['risk_level']} — db={database_type or 'unknown'}"
+            f"[{scan_id}] Completed — {len(all_findings)} finding(s) — "
+            f"risk={risk_level} score={risk_score} — db={database_type or 'unknown'}"
         )
 
     except Exception as exc:
         end = datetime.now()
         logger.error(f"[{scan_id}] Fatal error: {exc}", exc_info=True)
-        _upd(status="failed", error=str(exc))
+        _upd(status="failed", error=str(exc), progress_pct=0)
         _reporter.generate(
             scan_id=scan_id, url=url, findings=[], status="failed",
             start_time=start, end_time=end, error=str(exc), scan_config=config,
@@ -139,7 +237,7 @@ async def health():
         "status":           "ok",
         "sqlmap_available": _shutil.which("sqlmap") is not None,
         "active_scans":     len([s for s in _scans.values() if s["status"] == "running"]),
-        "version":          "2.0.0",
+        "version":          "3.0.0",
     }
 
 
@@ -152,12 +250,10 @@ async def get_default_config():
 @app.post("/api/scan/start", status_code=202)
 async def start_scan(req: ScanRequest, bg: BackgroundTasks):
     """Queue one scan per URL with optional custom configuration."""
-    # Validate URLs
     ok_urls, url_errors = validate_urls(req.urls)
     if not ok_urls:
         raise HTTPException(status_code=422, detail={"validation_errors": url_errors})
 
-    # Validate scan config if provided
     cfg = dict(req.scan_config or {})
     if cfg:
         ok_cfg, cfg_errors = validate_scan_config(cfg)
@@ -168,13 +264,14 @@ async def start_scan(req: ScanRequest, bg: BackgroundTasks):
     for url in req.urls:
         sid = uuid.uuid4().hex[:10]
         _scans[sid] = {
-            "scan_id":    sid,
-            "url":        url,
-            "status":     "pending",
-            "progress":   "En file d'attente",
-            "started_at": datetime.now().isoformat(),
-            "report":     None,
-            "error":      None,
+            "scan_id":     sid,
+            "url":         url,
+            "status":      "pending",
+            "progress":    "En file d'attente",
+            "progress_pct": 0,
+            "started_at":  datetime.now().isoformat(),
+            "report":      None,
+            "error":       None,
         }
         bg.add_task(_run_scan, sid, url, cfg)
         ids.append(sid)
@@ -187,26 +284,28 @@ async def start_scan(req: ScanRequest, bg: BackgroundTasks):
 async def scan_status(scan_id: str):
     """Return live status for a running or completed scan."""
     if scan_id in _scans:
-        s = _scans[scan_id]
+        s   = _scans[scan_id]
         rep = s.get("report") or {}
         return {
-            "scan_id":  scan_id,
-            "status":   s["status"],
-            "progress": s.get("progress"),
-            "url":      s["url"],
-            "error":    s.get("error"),
-            "summary":  rep.get("summary") if rep else None,
+            "scan_id":      scan_id,
+            "status":       s["status"],
+            "progress":     s.get("progress"),
+            "progress_pct": s.get("progress_pct", 0),
+            "url":          s["url"],
+            "error":        s.get("error"),
+            "summary":      rep.get("summary") if rep else None,
         }
 
     report = _reporter.load(scan_id)
     if report:
         return {
-            "scan_id":  scan_id,
-            "status":   report["status"],
-            "progress": "Terminé",
-            "url":      report["target"],
-            "error":    report.get("error"),
-            "summary":  report.get("summary"),
+            "scan_id":      scan_id,
+            "status":       report["status"],
+            "progress":     "Terminé",
+            "progress_pct": 100,
+            "url":          report["target"],
+            "error":        report.get("error"),
+            "summary":      report.get("summary"),
         }
 
     raise HTTPException(status_code=404, detail="Scan introuvable")

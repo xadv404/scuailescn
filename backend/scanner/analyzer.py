@@ -255,13 +255,15 @@ class ResultAnalyzer:
                     seen.add(vuln_type)
                     findings.append(
                         {
-                            "type": vuln_type,
-                            "severity": meta["severity"],
-                            "location": url,
-                            "description": meta["description"],
-                            "impact": meta["impact"],
+                            "type":           vuln_type,
+                            "category":       "SQL Injection",
+                            "severity":       meta["severity"],
+                            "confidence":     "confirmed",
+                            "location":       url,
+                            "description":    meta["description"],
+                            "impact":         meta["impact"],
                             "recommendation": meta["recommendation"],
-                            "evidence": self._build_evidence(pattern, matches),
+                            "evidence":       self._build_evidence(pattern, matches),
                         }
                     )
                     logger.info(f"[{url}] Finding [{meta['severity'].upper()}] {vuln_type}")

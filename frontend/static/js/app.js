@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════════════════════════
-   SQL Audit Scanner v2 – Frontend Application
+   SQL Audit Scanner v3 – Frontend Application
 ══════════════════════════════════════════════════════════════ */
 'use strict';
 
@@ -120,7 +120,6 @@ function applyConfigToForm(cfg) {
   if (cfg.cookies)    $('#cfg-cookies').value    = cfg.cookies;
   if (cfg.auth_bearer)$('#cfg-bearer').value     = cfg.auth_bearer;
 
-  // headers dict → multiline string
   const hdrs = cfg.headers;
   if (hdrs && typeof hdrs === 'object' && Object.keys(hdrs).length) {
     $('#cfg-headers').value = Object.entries(hdrs).map(([k,v]) => `${k}: ${v}`).join('\n');
@@ -131,7 +130,6 @@ function applyConfigToForm(cfg) {
   if (cfg.level)      $('#cfg-level').value      = cfg.level;
   if (cfg.risk)       $('#cfg-risk').value        = cfg.risk;
 
-  // Techniques checkboxes
   if (cfg.techniques) {
     const techs = String(cfg.techniques).toUpperCase();
     $$('.tech-cb').forEach(cb => { cb.checked = techs.includes(cb.value); });
@@ -213,18 +211,20 @@ function clearUrlErrors() {
 /* ── Active scans ───────────────────────────────────────────────── */
 const activePolls = new Map();
 
-function progressPercent(status, progress) {
+function progressPercent(status, progress, progress_pct) {
+  if (progress_pct != null) return Math.min(100, Math.max(0, Math.round(progress_pct)));
   if (status === 'completed' || status === 'failed') return 100;
-  if ((progress||'').includes('Initialisation')) return 15;
-  if ((progress||'').includes('Tests'))          return 40;
-  if ((progress||'').includes('Analyse'))        return 75;
-  if ((progress||'').includes('Génération'))     return 90;
+  if ((progress||'').includes('Initialisation')) return 5;
+  if ((progress||'').includes('Modules passifs')) return 30;
+  if ((progress||'').includes('SQLMap'))          return 55;
+  if ((progress||'').includes('Analyse'))         return 80;
+  if ((progress||'').includes('Génération'))      return 90;
   return 10;
 }
 
 function renderScanCard(data) {
-  const { scan_id, status, progress, url, error, summary } = data;
-  const pct = progressPercent(status, progress);
+  const { scan_id, status, progress, progress_pct, url, error, summary } = data;
+  const pct = progressPercent(status, progress, progress_pct);
   const barBg = status === 'failed'    ? 'var(--red)'
               : status === 'completed' ? 'var(--green)'
               : 'linear-gradient(90deg,var(--accent),#58a6ff)';
@@ -243,12 +243,17 @@ function renderScanCard(data) {
     ? `<span style="font-family:var(--font-mono);font-size:11px;color:var(--purple);margin-left:auto">${escHtml(summary.database_type)}</span>`
     : '';
 
+  const scoreTag = summary?.risk_score != null && status === 'completed'
+    ? `<span class="risk-score-tag" style="${riskScoreColor(summary.risk_score)}">Score: ${summary.risk_score}/100</span>`
+    : '';
+
   return `
   <div class="scan-card scan-card--${status}" id="scan-${scan_id}">
     <div class="scan-card-header">
       <span class="scan-url" title="${escHtml(url||'')}">${escHtml(truncate(url||'—',55))}</span>
       <span class="scan-id-tag">#${escHtml(scan_id)}</span>
       ${dbLine}
+      ${scoreTag}
       ${rightBadge}
     </div>
     <div class="progress-bar-wrap">
@@ -267,6 +272,13 @@ function renderScanCard(data) {
       <button class="btn btn--danger btn--sm" onclick="removeScan('${escHtml(scan_id)}')">Supprimer</button>
     </div>` : ''}
   </div>`;
+}
+
+function riskScoreColor(score) {
+  if (score >= 70) return 'color:var(--red)';
+  if (score >= 40) return 'color:var(--orange)';
+  if (score >= 15) return 'color:var(--yellow)';
+  return 'color:var(--green)';
 }
 
 function upsertScanCard(data) {
@@ -291,11 +303,12 @@ async function pollScan(scan_id) {
       loadReports();
 
       if (data.status === 'completed') {
-        const risk = data.summary?.risk_level || 'N/A';
-        const vuln = data.summary?.vulnerable;
-        const db   = data.summary?.database_type;
+        const risk  = data.summary?.risk_level || 'N/A';
+        const score = data.summary?.risk_score;
+        const vuln  = data.summary?.vulnerable;
+        const db    = data.summary?.database_type;
         toast(
-          `Scan #${scan_id} terminé — Risque : ${risk}${db && db !== 'Non détecté' ? ' — ' + db : ''}${vuln ? ' ⚠' : ''}`,
+          `Scan #${scan_id} terminé — Risque : ${risk}${score != null ? ` (${score}/100)` : ''}${db && db !== 'Non détecté' ? ' — ' + db : ''}${vuln ? ' ⚠' : ''}`,
           vuln ? 'error' : 'success'
         );
       } else {
@@ -382,7 +395,7 @@ async function loadReports() {
     <table class="report-table">
       <thead><tr>
         <th>ID</th><th>Cible</th><th>Date</th>
-        <th>Moteur DB</th><th>Risque</th><th>Statut</th>
+        <th>Moteur DB</th><th>Risque</th><th>Score</th><th>Statut</th>
         <th style="text-align:right">Actions</th>
       </tr></thead>
       <tbody>
@@ -393,6 +406,7 @@ async function loadReports() {
           <td>${fmtDate(r.date)}</td>
           <td class="db-cell">${escHtml(r.database_type||'—')}</td>
           <td><span class="badge badge--${severityClass((r.risk_level||'none').toLowerCase())}">${escHtml(r.risk_level||'N/A')}</span></td>
+          <td><span style="${riskScoreColor(r.risk_score||0)};font-weight:600;font-size:12px">${r.risk_score != null ? r.risk_score+'/100' : '—'}</span></td>
           <td><span class="badge badge--status-${r.status}">${escHtml(r.status||'—')}</span></td>
           <td class="actions-cell">
             <button class="btn btn--ghost btn--sm" onclick="openReport('${escHtml(r.scan_id)}')">Rapport</button>
@@ -430,15 +444,18 @@ async function openReport(scan_id) {
 
 /* ── Report renderer ────────────────────────────────────────────── */
 function renderReport(r) {
-  const ss       = r.scan_summary || r.summary || {};
-  const sev      = ss.severity || ss.severity_breakdown || {};
-  const findings = r.findings  || [];
-  const recs     = r.recommendations || [];
-  const cfg      = r.scan_config || {};
-  const risk     = ss.risk_level || 'NONE';
-  const vuln     = ss.vulnerable;
-  const dbType   = ss.database_type || 'Non détecté';
-  const dbEngines= ss.database_engines || {};
+  const ss         = r.scan_summary || r.summary || {};
+  const sev        = ss.severity || ss.severity_breakdown || {};
+  const findings   = r.findings  || [];
+  const recs       = r.recommendations || [];
+  const cfg        = r.scan_config || {};
+  const risk       = ss.risk_level || 'NONE';
+  const vuln       = ss.vulnerable;
+  const dbType     = ss.database_type || 'Non détecté';
+  const dbEngines  = ss.database_engines || {};
+  const riskScore  = ss.risk_score ?? null;
+  const categories = ss.categories || {};
+  const techs      = ss.technologies || [];
 
   return `
   <!-- ── Dashboard stats ────────────────────────────────────── -->
@@ -451,6 +468,12 @@ function renderReport(r) {
       <div class="stat-value">${escHtml(risk)}</div>
       <div class="stat-label">Risque global</div>
     </div>
+    ${riskScore != null ? `
+    <div class="stat-card">
+      <div class="stat-value risk-score-gauge" style="${riskScoreColor(riskScore)}">${riskScore}<span style="font-size:14px;font-weight:400;opacity:.7">/100</span></div>
+      <div class="stat-label">Score de risque</div>
+      <div class="risk-bar-track"><div class="risk-bar-fill" style="width:${riskScore}%;background:${riskScoreBg(riskScore)}"></div></div>
+    </div>` : ''}
     <div class="stat-card">
       <div class="stat-value" style="color:var(--accent)">${findings.length}</div>
       <div class="stat-label">Findings</div>
@@ -474,6 +497,20 @@ function renderReport(r) {
     <div class="meta-block"><div class="label">Date fin</div><div class="value" style="font-size:12px">${fmtDate(r.end_date)}</div></div>
   </div>
 
+  <!-- ── Technologies detected ─────────────────────────────── -->
+  ${techs.length ? `
+  <div class="section-title">Technologies détectées</div>
+  <div class="tech-chips">
+    ${techs.map(t => `<span class="tech-chip">${escHtml(t)}</span>`).join('')}
+  </div>` : ''}
+
+  <!-- ── Category breakdown ─────────────────────────────────── -->
+  ${Object.keys(categories).length ? `
+  <div class="section-title">Résultats par catégorie</div>
+  <div class="category-grid">
+    ${Object.entries(categories).map(([cat, data]) => renderCategoryCard(cat, data)).join('')}
+  </div>` : ''}
+
   <!-- ── Severity bar chart ─────────────────────────────────── -->
   ${findings.length ? `
   <div class="section-title">Répartition par criticité</div>
@@ -493,7 +530,7 @@ function renderReport(r) {
   <!-- ── Findings ───────────────────────────────────────────── -->
   <div class="section-title">Constats (${findings.length})</div>
   ${findings.length === 0
-    ? '<p class="empty-state">Aucune injection SQL détectée sur cette cible.</p>'
+    ? '<p class="empty-state">Aucune vulnérabilité détectée sur cette cible.</p>'
     : findings.map(f => renderFinding(f)).join('')}
 
   <!-- ── Recommendations ────────────────────────────────────── -->
@@ -535,6 +572,29 @@ function severityCard(risk) {
   return '';
 }
 
+function riskScoreBg(score) {
+  if (score >= 70) return 'var(--red)';
+  if (score >= 40) return 'var(--orange)';
+  if (score >= 15) return 'var(--yellow)';
+  return 'var(--green)';
+}
+
+function renderCategoryCard(cat, data) {
+  const sev  = data.severity || {};
+  const cnt  = data.count || 0;
+  const top  = ['critical','high','medium','low','info'].find(l => (sev[l]||0) > 0) || 'info';
+  const pills = ['critical','high','medium','low','info']
+    .filter(l => (sev[l]||0) > 0)
+    .map(l => `<span class="cat-sev-pill cat-sev--${l}">${sev[l]} ${l}</span>`)
+    .join('');
+  return `
+  <div class="category-card category-card--${top}">
+    <div class="category-card-title">${escHtml(cat)}</div>
+    <div class="category-card-count">${cnt} finding${cnt > 1 ? 's' : ''}</div>
+    <div class="category-sev-pills">${pills || '<span class="cat-sev-pill cat-sev--info">0 finding</span>'}</div>
+  </div>`;
+}
+
 function renderSevChart(sev) {
   const levels = ['critical','high','medium','low','info'];
   const max    = Math.max(...levels.map(l => sev[l] || 0), 1);
@@ -555,7 +615,14 @@ function renderSevChart(sev) {
 
 function renderFinding(f) {
   const ev       = f.evidence || {};
-  const snippets = (ev.snippets || []).filter(Boolean);
+  // evidence may be a string (passive) or object (sqlmap)
+  const snippets = typeof ev === 'object' && ev.snippets
+    ? (ev.snippets || []).filter(Boolean)
+    : (typeof ev === 'string' && ev ? [ev] : []);
+  const occurrences = typeof ev === 'object' ? (ev.occurrences || 0) : 0;
+  const confidence  = f.confidence ? `<dt>Confiance</dt><dd><span class="badge badge--${severityClass(f.severity)}" style="opacity:.8">${escHtml(f.confidence)}</span></dd>` : '';
+  const category    = f.category   ? `<dt>Catégorie</dt><dd>${escHtml(f.category)}</dd>` : '';
+
   return `
   <div class="finding-card">
     <div class="finding-header">
@@ -566,6 +633,8 @@ function renderFinding(f) {
     <div class="finding-body">
       <dl>
         <dt>Type</dt><dd>${escHtml(f.type||'—')}</dd>
+        ${category}
+        ${confidence}
         <dt>Localisation</dt>
         <dd><span style="font-family:var(--font-mono);font-size:12px">${escHtml(f.location||'—')}</span></dd>
         <dt>Description</dt><dd>${escHtml(f.description||'—')}</dd>
@@ -575,7 +644,7 @@ function renderFinding(f) {
         <dt>Preuve technique (extrait sanitisé)</dt>
         <dd>
           <div class="evidence-block">${snippets.map(s => escHtml(s)).join('\n')}</div>
-          <span style="font-size:11px;color:var(--text-muted)">${ev.occurrences||0} occurrence(s)</span>
+          ${occurrences ? `<span style="font-size:11px;color:var(--text-muted)">${occurrences} occurrence(s)</span>` : ''}
         </dd>` : ''}
       </dl>
     </div>

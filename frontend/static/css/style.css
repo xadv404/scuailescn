@@ -461,6 +461,67 @@ body {
 .toast--error   { border-color: rgba(248,81,73,.4);  background: rgba(248,81,73,.08); }
 .toast--info    { border-color: rgba(33,136,255,.4); background: rgba(33,136,255,.08); }
 
+/* ── Risk score bar (inside stat-card) ──────────────────────── */
+.risk-score-gauge { font-size: 28px; font-weight: 700; line-height: 1; }
+.risk-bar-track {
+  width: 100%; height: 4px; background: var(--border);
+  border-radius: 2px; margin-top: 6px; overflow: hidden;
+}
+.risk-bar-fill { height: 100%; border-radius: 2px; transition: width .6s ease; }
+
+/* ── Risk score tag (scan card) ─────────────────────────────── */
+.risk-score-tag {
+  font-size: 11px; font-weight: 600; font-family: var(--font-mono);
+  padding: 2px 6px; border-radius: 4px;
+  background: rgba(255,255,255,.05); border: 1px solid var(--border);
+}
+
+/* ── Technology chips ───────────────────────────────────────── */
+.tech-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.tech-chip {
+  font-size: 12px; font-weight: 500; padding: 4px 10px;
+  border-radius: 20px; background: rgba(188,140,255,.12);
+  border: 1px solid rgba(188,140,255,.3); color: var(--purple);
+}
+
+/* ── Category breakdown grid ────────────────────────────────── */
+.category-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 12px; margin-bottom: 4px;
+}
+.category-card {
+  border-radius: var(--radius-md); padding: 14px 16px;
+  background: var(--bg-surface);
+  border-left: 3px solid var(--border);
+  border-top: 1px solid var(--border);
+  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+.category-card--critical { border-left-color: var(--sev-critical); }
+.category-card--high     { border-left-color: var(--sev-high); }
+.category-card--medium   { border-left-color: var(--sev-medium); }
+.category-card--low      { border-left-color: var(--sev-low); }
+.category-card--info     { border-left-color: var(--sev-info); }
+
+.category-card-title {
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+  text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px;
+}
+.category-card-count {
+  font-size: 22px; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;
+}
+.category-sev-pills { display: flex; flex-wrap: wrap; gap: 4px; }
+.cat-sev-pill {
+  font-size: 10px; font-weight: 600; padding: 2px 6px;
+  border-radius: 3px; text-transform: uppercase; letter-spacing: .04em;
+}
+.cat-sev--critical { background: rgba(248,81,73,.15);  color: var(--sev-critical); }
+.cat-sev--high     { background: rgba(240,136,62,.15); color: var(--sev-high); }
+.cat-sev--medium   { background: rgba(210,153,34,.15); color: var(--sev-medium); }
+.cat-sev--low      { background: rgba(88,166,255,.15); color: var(--sev-low); }
+.cat-sev--info     { background: rgba(139,148,158,.12);color: var(--sev-info); }
+
 /* ── Responsive ─────────────────────────────────────────────── */
 @media (max-width: 700px) {
   .config-grid { grid-template-columns: 1fr; }
@@ -471,4 +532,5 @@ body {
   .report-table th:nth-child(3),
   .report-table td:nth-child(3) { display: none; }
   .dashboard-stats { grid-template-columns: 1fr 1fr; }
+  .category-grid { grid-template-columns: 1fr 1fr; }
 }
