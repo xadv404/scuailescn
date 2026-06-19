@@ -3,11 +3,15 @@
 from pathlib import Path
 import itertools
 
+# ── Cible : Suisse uniquement ──────────────────────────────────
+# Utiliser site:.ch sur Google ou gl=ch&cr=countryCH sur Bing
+SITE = "site:.ch"
+
 # ── Exclusions ─────────────────────────────────────────────────
-X  = "-exemple -test -demo -admin -facebook -linkedin -instagram -youtube -wikipedia -github -twitter"
-XB = "-booking -airbnb -tripadvisor -expedia -hotels.com"
-XS = "-amazon -galaxus -digitec -zalando -migros -coop -manor -microspot"
-XK = "-comparis -local.ch -search.ch -homegate -scout24 -tutti.ch -anibis -doctolib"
+X  = f"{SITE} -exemple -test -demo -admin -facebook -linkedin -instagram -youtube -wikipedia -github -twitter"
+XB = f"{SITE} -booking -airbnb -tripadvisor -expedia -hotels.com"
+XS = f"{SITE} -amazon -galaxus -digitec -zalando -migros -coop -manor -microspot"
+XK = f"{SITE} -comparis -local.ch -search.ch -homegate -scout24 -tutti.ch -anibis -doctolib"
 
 # ── Régions ────────────────────────────────────────────────────
 REG_FR = [
@@ -704,13 +708,19 @@ _NICHES_IT = [
 def generate():
     dorks = set()
 
-    # Dorks techniques (fixes)
+    # Dorks techniques — forcés site:.ch
     for d in TECH_DORKS:
-        dorks.add(d)
+        if SITE not in d:
+            dorks.add(f'{d} {SITE}')
+        else:
+            dorks.add(d)
 
-    # Dorks scanner-spécifiques
+    # Dorks scanner-spécifiques — forcés site:.ch
     for d in SCANNER_DORKS:
-        dorks.add(d)
+        if SITE not in d:
+            dorks.add(f'{d} {SITE}')
+        else:
+            dorks.add(d)
 
     # ── Niches 10k-100k : niche + param GET injectable ──────────
     for niche in _NICHES_FR + _NICHES_DE + _NICHES_IT:
